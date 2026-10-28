@@ -17,18 +17,18 @@ from gap_analysis import (calcular_gaps, load_proyeccion, ronda_a_num, DEFAULT_P
                           MONEDA_MERCADO as _MONEDA_MERCADO_GAP)
 from metric_crosswalk import CROSSWALK_FINANZAS, CROSSWALK_MERCADO, CROSSWALK_OPERACIONES, CROSSWALK_RESULTADOS
 # Motor de proyección (build_gestion_v2.py, ver README del motor): genera el Excel de gestión
-# ("CADIZ_Gestion_v2.xlsx") al vuelo a partir de los RDOS de cada ronda jugada, sin tocar el disco
+# ("ULTI_Gestion_v2.xlsx") al vuelo a partir de los RDOS de cada ronda jugada, sin tocar el disco
 # del servidor (io.BytesIO) -- ver bloque "Generar Excel de gestión" en la sidebar, más abajo.
 # Ronda N.N (Fase 4 -- arquitectura basada en repo, sin file_uploader): la fuente de RDOS oficiales y
 # de decisiones previas ya no se sube a mano en cada corrida -- se lee de rutas fijas DENTRO del
 # propio repo de GitHub (data/raw/oficial/ y data/decisiones/), commiteadas como parte del repo (igual
-# que ya se commitea CADIZ_Gestion_v2.xlsx hoy). generar_excel_desde_repo() hace todo: detecta la
+# que ya se commitea ULTI_Gestion_v2.xlsx hoy). generar_excel_desde_repo() hace todo: detecta la
 # frontera REAL/PLAN, arma el Excel completo, rescata decisiones futuras cargadas en el archivo de
 # decisiones anterior y congela el plan de la ronda que acaba de pasar a REAL.
 from build_gestion_v2 import generar_excel_desde_repo, descubrir_ultima_proyeccion
 # --- IDENTIDAD Y PALETA SEMÁNTICA ---
-MY_COMPANY = 'CADIZ'
-COMPANIES = ['CADIZ', 'CEOS', 'CHIEF', 'CLAVE', 'CUORE', 'FOCUS', 'TOKIO']
+MY_COMPANY = 'ULTI'
+COMPANIES = ['LUCKY', 'MECHA', 'PRELA', 'NEXUS', 'ULTI', 'NOSRE', 'NODO']
 # Adenda 25 (a pedido del equipo, mockup aprobado -- Opción B "Ciruela"): antes un solo rojo
 # (BRAND_ACCENT) hacía DOBLE trabajo -- identificar a CÁDIZ Y marcar negativo/crítico -- por eso
 # casi todo el tablero "se veía mal" con solo ver el color. Se separan en dos constantes con un
@@ -52,7 +52,7 @@ MUTED_PALETTE = ['#8C97A6', '#A68C6E', '#7E9E8C', '#9E8CA0', '#A69B6E', '#7E8C9E
 # SIN el marrón (índice 1) -- para usar en `color_discrete_sequence=` de gráficos con categorías
 # genéricas (sin identidad ni sentimiento) donde Plotly asigna el color por ORDEN de aparición, no
 # por nombre -- ahí un MUTED_PALETTE[1] "se cuela" igual aunque no se lo nombre a mano (fue el caso
-# de "Mix tecnológico": Plotly le tocó el marrón a "Híbrido" solo por ser la 2ª tecnología de la
+# de "Mix tecnológico": Plotly le tocó el marrón a "Tec 2" solo por ser la 2ª tecnología de la
 # lista). No se reemplaza por lila: siguen siendo categorías sin identidad de CADIZ.
 # Fix adicional (feedback "ya casi"): sacar el marrón no alcanzaba -- MUTED_PALETTE[5] y [0] son dos
 # grises azulados casi idénticos (distancia RGB ~19.5, muy por debajo del resto de la paleta) y
@@ -122,12 +122,12 @@ ALTURA_TARJETA = 370    # alto FIJO de toda tarjeta de gráfico, con o sin leyen
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, 'data', 'raw')
 DIR_DECISIONES = os.path.join(BASE_DIR, 'data', 'decisiones')
-st.set_page_config(page_title='CÁDIZ | Tablero Directivo', layout='wide')
+st.set_page_config(page_title='ULTI | Tablero Directivo', layout='wide')
 # ---------------- Carga de datos y Helpers ----------------
 def get_pais(estado: str) -> str:
     if re.search(r'\bGlobal\b', estado) or 'casa matriz' in estado: return 'Global'
     if 'EE.UU.' in estado: return 'EE.UU.'
-    if 'China' in estado: return 'China'
+    if 'Asia' in estado: return 'Asia'
     if 'Europa' in estado: return 'Europa'
     return 'General'
 _CESIM_PARSER_PATH = os.path.join(BASE_DIR, 'cesim_parser.py')
@@ -164,15 +164,15 @@ def get_data(tipo_ronda) -> pd.DataFrame:
         st.stop()
     df_raw = cargar_historico(tuple(xls_files), _parser_version())
     return df_raw[df_raw['Tipo_Ronda'] == tipo_ronda].copy()
-@st.cache_data(show_spinner='Leyendo proyección de CADIZ...')
+@st.cache_data(show_spinner='Leyendo proyección de ULTI...')
 def _cargar_proyeccion_cached(path: str, mtime: float):
     # `mtime` en la firma de cache -- no se usa dentro de la función, pero cambia cada vez que se
-    # reemplaza CADIZ_Gestion_v2.xlsx en el repo (mismo nombre de archivo), así Streamlit invalida
+    # reemplaza ULTI_Gestion_v2.xlsx en el repo (mismo nombre de archivo), así Streamlit invalida
     # el caché y relee el Excel en vez de servir una versión vieja. Devuelve un DataFrame o None.
     return load_proyeccion(path)
 def get_proyeccion(ronda_num=None):
     """Ronda N.N+1 (bug real, corregido -- a pedido de Mati, confirmado contra el repo real): cada
-    Cadiz_proyeccion_R{N}.xlsx es AUTOSUFICIENTE para comparar la ronda N contra SU PROPIO plan --
+    Ulti_proyeccion_R{N}.xlsx es AUTOSUFICIENTE para comparar la ronda N contra SU PROPIO plan --
     trae su propia fila status='PLAN', round=N para CADIZ (ver gap_analysis._valor_proyeccion, que
     filtra por round==ronda_num SIN filtrar por status). El lado 'Real' de la comparación nunca sale
     de este archivo -- sale siempre de df_all/df (parseado directo de los RDOS vía cesim_parser) --
@@ -183,23 +183,23 @@ def get_proyeccion(ronda_num=None):
     Bug real, corregido: antes esta función usaba SIEMPRE descubrir_ultima_proyeccion() (el N más
     alto commiteado en data/decisiones/), asumiendo que ese único archivo traía el Plan de TODAS las
     rondas anteriores todavía congelado. Verificado contra el repo real: esa cadena se rompió en
-    alguna corrida intermedia -- Cadiz_proyeccion_R6.xlsx (el commiteado) NO trae el Plan congelado
-    de las Rondas 2, 4 y 5, que Cadiz_proyeccion_R4.xlsx/R5.xlsx SÍ tenían en su momento (confirmado
+    alguna corrida intermedia -- Ulti_proyeccion_R6.xlsx (el commiteado) NO trae el Plan congelado
+    de las Rondas 2, 4 y 5, que Ulti_proyeccion_R4.xlsx/R5.xlsx SÍ tenían en su momento (confirmado
     leyendo la hoja DATA_EXPORT de cada archivo: R4.xlsx trae round=2 con status PLAN+REAL, R5.xlsx
     trae round=2 y round=4 con PLAN+REAL, R6.xlsx no trae ningún PLAN de rondas 0-5). Como Control de
     Gestión siempre leía el último archivo commiteado, Ronda 3/4/5 mostraban "sin datos" en vez del
-    desvío Plan vs. Real, aunque esas rondas SÍ tuvieran su propio Cadiz_proyeccion_R{N}.xlsx cargado
+    desvío Plan vs. Real, aunque esas rondas SÍ tuvieran su propio Ulti_proyeccion_R{N}.xlsx cargado
     en el repo. Ahora cada ronda lee DIRECTAMENTE su propio archivo -- no depende de que ninguna
     corrida posterior lo haya "arrastrado" bien.
 
     ronda_num=None (o sin archivo con ese número exacto -- ej. una ronda que todavía no tiene su
-    propio Cadiz_proyeccion_R{N}.xlsx generado) cae al comportamiento viejo: el N más alto
-    commiteado en data/decisiones/, y si tampoco hay ninguno, al viejo CADIZ_Gestion_v2.xlsx en la
+    propio Ulti_proyeccion_R{N}.xlsx generado) cae al comportamiento viejo: el N más alto
+    commiteado en data/decisiones/, y si tampoco hay ninguno, al viejo ULTI_Gestion_v2.xlsx en la
     raíz por compatibilidad -- si nada de eso existe, no hay proyección para mostrar (la app debe
     poder arrancar igual)."""
     path = None
     if ronda_num is not None:
-        candidato = os.path.join(DIR_DECISIONES, f"Cadiz_proyeccion_R{ronda_num}.xlsx")
+        candidato = os.path.join(DIR_DECISIONES, f"Ulti_proyeccion_R{ronda_num}.xlsx")
         if os.path.exists(candidato):
             path = candidato
     if path is None:
@@ -349,10 +349,10 @@ def chart_evolucion(sub: pd.DataFrame, titulo: str, altura=None):
     # (370px) para leerse bien a ancho completo -- default None preserva el alto de siempre en
     # el resto de los ~15 llamados a chart_evolucion() que no lo pasan.
     mostrar(fig, altura=altura)
-def chart_evolucion_proyeccion(df_proy: pd.DataFrame, metric: str, region: str, titulo: str, team='CADIZ'):
+def chart_evolucion_proyeccion(df_proy: pd.DataFrame, metric: str, region: str, titulo: str, team='ULTI'):
     """Evolución de una métrica que CADIZ proyecta pero que CESIM nunca publica en el RDOS (ej. FCF) --
     a diferencia de chart_evolucion (que grafica el dato REAL de los 7 equipos), acá solo hay una
-    serie: la propia proyección de CADIZ, ronda a ronda. Se muestra igual, sin comparación, para no
+    serie: la propia proyección de ULTI, ronda a ronda. Se muestra igual, sin comparación, para no
     perder de vista la tendencia de un indicador que de otro modo quedaría sin ningún gráfico."""
     if df_proy is None:
         return st.info('Sin proyección cargada.')
@@ -550,7 +550,7 @@ def chart_bullet_panel(items):
                        legend=dict(orientation='h', yanchor='top', y=y_leyenda, xanchor='center', x=0.5))
     mostrar(fig, altura=altura, margen_b=margen_b)
 
-# --- COMPARATIVA PLAN VS. REAL: Proyectado (CADIZ_Gestion_v2.xlsx, vía export_proyeccion.py) vs.
+# --- COMPARATIVA PLAN VS. REAL: Proyectado (ULTI_Gestion_v2.xlsx, vía export_proyeccion.py) vs.
 # Real (RDOS de CESIM, ya parseados más arriba por cesim_parser) ---
 def _fmt_valor_cg(v, tipo):
     if v is None:
@@ -624,7 +624,7 @@ def panel_comparativa_plan_real(df_todas_rondas, ronda_snapshot, crosswalk=None,
     ronda_num = ronda_a_num(ronda_snapshot)
     df_proy = get_proyeccion(ronda_num)
     if df_proy is None:
-        st.info('Todavía no hay ningún `Cadiz_proyeccion_R{N}.xlsx` en `data/decisiones/` (o no se '
+        st.info('Todavía no hay ningún `Ulti_proyeccion_R{N}.xlsx` en `data/decisiones/` (o no se '
                 'pudo leer la hoja `DATA_EXPORT`) — generalo con el botón "Generar Excel de gestión" '
                 'de la sidebar y commiteá el resultado en esa carpeta para ver la Comparativa Plan vs. Real.')
         return
@@ -637,7 +637,7 @@ def panel_comparativa_plan_real(df_todas_rondas, ronda_snapshot, crosswalk=None,
     with st.container(border=True):
         st.markdown(f'**Comparativa Plan vs. Real — {ronda_snapshot}**')
         if not con_gap:
-            st.caption('CADIZ no tiene una proyección cargada para este año en el modelo de gestión — '
+            st.caption('ULTI no tiene una proyección cargada para este año en el modelo de gestión — '
                        'ver la evolución de cada indicador más abajo.')
         else:
             if mostrar_metricas:
@@ -646,7 +646,7 @@ def panel_comparativa_plan_real(df_todas_rondas, ronda_snapshot, crosswalk=None,
                     with cols[i % len(cols)]:
                         if v['estado'] == 'sin_real':
                             st.metric(v['label'], _fmt_valor_cg(v['proyectado'], v['tipo']))
-                            st.caption('Proyectado (CADIZ) — real de CESIM pendiente')
+                            st.caption('Proyectado (ULTI) — real de CESIM pendiente')
                         else:
                             st.metric(v['label'], _fmt_valor_cg(v['real'], v['tipo']),
                                        delta=_fmt_delta_cg(v), delta_color=_DELTA_COLOR_CG[v['gap_favorable']])
@@ -684,7 +684,7 @@ def panel_comparativa_plan_real(df_todas_rondas, ronda_snapshot, crosswalk=None,
         # la de barras horizontales".
         if mostrar_extras and (sin_gap or sin_publicar):
             st.caption('Sin comparación posible para estos indicadores (no forman parte de la '
-                       'proyección de CADIZ, es un año de práctica, o CESIM no publica ese dato en '
+                       'proyección de ULTI, es un año de práctica, o CESIM no publica ese dato en '
                        'el RDOS) — se muestra su evolución:')
     if mostrar_extras and (sin_gap or sin_publicar):
         total = len(sin_gap) + len(sin_publicar)
@@ -702,17 +702,17 @@ def panel_comparativa_plan_real(df_todas_rondas, ronda_snapshot, crosswalk=None,
             spec = crosswalk[clave]['proyeccion']
             with cols_ev[i % len(cols_ev)]:
                 chart_evolucion_proyeccion(df_proy, spec['metric'], spec['region'], v['label'])
-                st.caption('CESIM no publica este dato en el RDOS — evolución de la proyección propia de CADIZ.')
+                st.caption('CESIM no publica este dato en el RDOS — evolución de la proyección propia de ULTI.')
             i += 1
 
 # --- Fila 3 de la Comparativa Plan vs. Real: gráficos de GAP/varianza específicos por sección
 # (Adenda 12). Cada uno se llama desde la pestaña "Comparativa Plan vs. Real" de su propia sección
 # (no desde panel_comparativa_plan_real, que es genérico y no conoce estas métricas de grano fino
 # por mercado/tecnología/área) -- y solo tiene sentido con team=CADIZ (son cruces contra SU propia
-# proyección en CADIZ_Gestion_v2.xlsx). ---
+# proyección en ULTI_Gestion_v2.xlsx). ---
 def fila_cg_demanda_estimada(df_all, ronda_snapshot, ronda_num, df_proy, mercado_sel):
     """Adenda 30 (a pedido del equipo, Nivel 2 de Control de Gestión): desvío PURO de pronóstico de
-    demanda -- Demanda Estimada por CADIZ (D1c·DEMANDA, al planificar) vs. Demanda Real (RDOS), por
+    demanda -- Demanda Estimada por ULTI (D1c·DEMANDA, al planificar) vs. Demanda Real (RDOS), por
     tecnología, ANTES del corte de Ventas efectivas (que ya depende de disponibilidad/capacidad, no
     solo del pronóstico -- eso se ve aparte más abajo, en el waterfall de Ingresos). Barras agrupadas
     (mismo lenguaje visual que fila3_mercado_cuota_objetivo, para no introducir un tercer estilo de
@@ -722,14 +722,14 @@ def fila_cg_demanda_estimada(df_all, ronda_snapshot, ronda_num, df_proy, mercado
     y se pasa como parámetro a esta función y a las otras dos filas del nivel (cuota, ingresos), para
     que las tres lean siempre el mismo mercado sin selectores redundantes."""
     st.markdown('###### Desvío de Pronóstico — Demanda Estimada vs. Demanda Real')
-    st.caption('Antes del corte de Ventas efectivas: acá se ve si CADIZ estimó bien cuánto le iba a '
+    st.caption('Antes del corte de Ventas efectivas: acá se ve si ULTI estimó bien cuánto le iba a '
                'demandar el mercado, más allá de si después pudo o no abastecer toda esa demanda '
                '(eso se ve en el desvío de Ingresos, más abajo).')
     datos = demanda_estimada_vs_real(df_all, df_proy, ronda_snapshot, ronda_num, mercado_sel, team=MY_COMPANY)
     if not datos:
         return st.info(f'Sin datos de demanda estimada/real en {mercado_sel} para {ronda_snapshot}.')
     if all(d['plan'] is None for d in datos.values()):
-        return st.info(f'CADIZ no tiene una demanda estimada cargada para {mercado_sel} en {ronda_snapshot} '
+        return st.info(f'ULTI no tiene una demanda estimada cargada para {mercado_sel} en {ronda_snapshot} '
                         '— el modelo de gestión proyecta recién desde Año 2, no hay Plan con el que comparar.')
     filas = []
     for tech, d in datos.items():
@@ -751,13 +751,13 @@ def fila3_resultados_ingresos(df_all, ronda_snapshot, ronda_num, df_proy, mercad
     st.markdown('###### Análisis de Desvíos de Ingresos — Precio / Volumen / Mix')
     datos = precio_volumen_mercado(df_all, df_proy, ronda_snapshot, ronda_num, mercado_sel, team=MY_COMPANY)
     if not datos:
-        st.info(f'CADIZ no tiene datos de precio/volumen (Plan o Real) en {mercado_sel} para {ronda_snapshot}.')
+        st.info(f'ULTI no tiene datos de precio/volumen (Plan o Real) en {mercado_sel} para {ronda_snapshot}.')
         return
     if all(d['precio_plan'] is None for d in datos.values()):
         # Sin ESTO, el waterfall tomaría Plan=0 como línea base y le atribuiría el 100% de los
         # Ingresos Reales al "Desvío por Precio" -- un artefacto de la falta de dato, no un desvío
         # real. El modelo de CADIZ solo proyecta desde Ronda 2 (Ronda 0/1 no tienen Plan cargado).
-        st.info(f'CADIZ no tiene una proyección de Precio/Volumen cargada para {mercado_sel} en {ronda_snapshot} '
+        st.info(f'ULTI no tiene una proyección de Precio/Volumen cargada para {mercado_sel} en {ronda_snapshot} '
                 '— el modelo de gestión proyecta recién desde Año 2, no hay Plan con el que comparar.')
         return
     var = variacion_precio_volumen_mix(datos)
@@ -806,7 +806,7 @@ def fila3_mercado_cuota_objetivo(df_all, ronda_snapshot, ronda_num, df_proy, mer
     fig.update_traces(textposition='outside', cliponaxis=False)
     fig.update_layout(yaxis_title='% del mercado total')
     mostrar(fig)
-    st.caption('Cuota = ventas de CADIZ en esa tecnología / tamaño TOTAL del mercado (las 4 tecnologías) — '
+    st.caption('Cuota = ventas de ULTI en esa tecnología / tamaño TOTAL del mercado (las 4 tecnologías) — '
                'misma convención en Plan y Real (distinta de la que el RDOS publica directo por tecnología, '
                'ver nota metodológica en gap_analysis.cuota_mercado_objetivo_vs_real). '
                'Ojo con leerla junto al gráfico de "Demanda estimada" de más arriba: el Proyectado de ESTA '
@@ -856,7 +856,7 @@ def fila3_operaciones_gap_fabricacion(df_all, ronda_snapshot, ronda_num, df_proy
         # Mismo motivo que en el waterfall de Ingresos: sin esto, Proyectado=0 le atribuiría el 100%
         # del costo real a un "Desvío" que en realidad es solo ausencia de proyección (Ronda 0/1,
         # antes de que el modelo de CADIZ empezara a proyectar en Ronda 2).
-        return st.info(f'CADIZ no tiene una proyección de costo unitario cargada para {area_sel} en {ronda_snapshot} '
+        return st.info(f'ULTI no tiene una proyección de costo unitario cargada para {area_sel} en {ronda_snapshot} '
                         '— el modelo de gestión proyecta recién desde Año 2, no hay Plan con el que comparar.')
     pond = _costo_fabricacion_ponderado(datos)
     if not pond:
@@ -889,7 +889,7 @@ def fila3_operaciones_gap_fabricacion(df_all, ronda_snapshot, ronda_num, df_proy
     mostrar(fig, ocultar_eje_valores='y')
     st.caption('Cada barra "Desvío {tecnología}" es cuánto empujó esa tecnología el costo unitario ponderado '
                'total, de Proyectado a Real (ponderado por su propia producción real) — no el costo de esa '
-               'tecnología en sí. Rojo = aumenta el costo (desfavorable para CADIZ); verde = lo reduce '
+               'tecnología en sí. Rojo = aumenta el costo (desfavorable para ULTI); verde = lo reduce '
                '(favorable) — única excepción a la convención de color del resto de la app (ver otros '
                'waterfalls), porque acá "suma/resta" y "favorable/desfavorable" van en sentido contrario. '
                '% entre paréntesis = sobre el Costo Proyectado. Costo Proyectado + todos los desvíos = Costo '
@@ -926,7 +926,7 @@ def fila3_finanzas_flujo_caja(df_all, ronda_snapshot, ronda_num, df_proy):
     col_p, col_r = st.columns(2)
     with col_p:
         if not _waterfall_flujo(f'Proyectado — {ronda_snapshot}', plan):
-            st.info('CADIZ no proyecta Flujo de Caja para este año en el modelo de gestión (recién desde Año 2).')
+            st.info('ULTI no proyecta Flujo de Caja para este año en el modelo de gestión (recién desde Año 2).')
     with col_r:
         if not _waterfall_flujo(f'Real — {ronda_snapshot}', real):
             st.info('CESIM todavía no publicó el RDOS real de este año.')
@@ -1196,7 +1196,7 @@ def evaluar_alertas():
     #     seleccionado en "Equipo en foco" (por eso se compara contra MY_COMPANY, no contra
     #     empresa_analisis: cambiar el equipo en foco para mirar otra sección no debe apagar esta
     #     vigilancia de la competencia).
-    # OJO con la forma del reporte: Cesim pone el PAÍS en 'Metrica' (EE.UU. / China) y el
+    # OJO con la forma del reporte: Cesim pone el PAÍS en 'Metrica' (EE.UU. / Asia) y el
     # HORIZONTE en 'Subgrupo' (Ronda actual / Próxima ronda / Después de la próxima ronda).
     # Filtrando al revés no matchea nada y el conteo actual daba 0.
     #
@@ -1205,19 +1205,19 @@ def evaluar_alertas():
     # corrigió de más filtrando a empresa_analisis, lo cual apagaba el aviso de competencia cuando
     # el foco está en CADIZ, que es exactamente el caso de uso principal. Esta versión vuelve a
     # cubrir a todos los rivales (todo el que no sea MY_COMPANY), agrega reducciones, y desglosa
-    # por área (Metrica) en vez de sumar EE.UU.+China en un solo número, que puede esconder un
+    # por área (Metrica) en vez de sumar EE.UU.+Asia en un solo número, que puede esconder un
     # movimiento real en un área si la otra se mueve al revés.
     #
     # Se mantiene el aviso de Ronda de práctica: verificado con datos reales que una decisión
-    # cargada ahí (ensayo, ej. CADIZ China 2->3 en Práctica 2) puede no trasladarse nunca a la
+    # cargada ahí (ensayo, ej. CADIZ Asia 2->3 en Práctica 2) puede no trasladarse nunca a la
     # competencia oficial (Ronda 1 mostró a CADIZ sin cambios) -- no es un compromiso real.
     #
-    # FIX (reportado: "en Ronda 1 dice que CEOS expande China en las próximas 2 rondas, y en
+    # FIX (reportado: "en Ronda 1 dice que CEOS expande Asia en las próximas 2 rondas, y en
     # Ronda 2 vuelve a decir lo mismo"): es el MISMO evento real, visto dos veces porque antes solo
     # se comparaba 'Ronda actual' contra 'Después de la próxima ronda' (fijo a 2 rondas vista) y el
     # título decía siempre "(próximas 2 rondas)" sin importar cuánto faltaba en realidad. Verificado
-    # con los datos: en R1, CEOS China = 2 (actual) / 2 (próxima) / 3 (después) -> el cambio todavía
-    # está a 2 rondas. En R2, CEOS China = 2 (actual) / 3 (próxima) / 3 (después) -> el MISMO cambio
+    # con los datos: en R1, CEOS Asia = 2 (actual) / 2 (próxima) / 3 (después) -> el cambio todavía
+    # está a 2 rondas. En R2, CEOS Asia = 2 (actual) / 3 (próxima) / 3 (después) -> el MISMO cambio
     # ya está a 1 ronda -- el horizonte se acorta, pero el mensaje no lo reflejaba y parecía una
     # alerta repetida sin sentido. Ahora se mira primero 'Próxima ronda' (1 ronda vista); si ahí no
     # hay cambio, recién se usa 'Después de la próxima ronda' (2 rondas vista) -- así el aviso
@@ -1288,7 +1288,7 @@ def panel_alertas():
                     unsafe_allow_html=True)
 
 # ---------------- Sidebar ----------------
-st.sidebar.markdown('### CÁDIZ AUTOMOTIVE')
+st.sidebar.markdown('### ULTI')
 # Las rondas de Práctica (el ensayo previo al arranque de la competencia oficial) se sacaron de la
 # navegación a pedido del equipo -- ya arrancó la competencia Oficial (Ronda 0 y Ronda 1 jugadas) y
 # esos ensayos "no suman" al análisis de gestión. Quedan como dato histórico en el repo
@@ -1300,7 +1300,7 @@ ronda_snapshot = st.sidebar.select_slider('Año de análisis', options=rondas_ti
 # ronda está en foco, en vez de ser puramente decorativo.
 st.sidebar.markdown(f'<div class="sidebar-status"><span class="dot"></span>{ronda_snapshot}</div>',
                      unsafe_allow_html=True)
-empresa_analisis = st.sidebar.selectbox('Equipo en foco', COMPANIES, index=0, key='select_equipo')
+empresa_analisis = st.sidebar.selectbox('Equipo en foco', COMPANIES, index=COMPANIES.index(MY_COMPANY), key='select_equipo')
 st.sidebar.divider()
 
 # ---------------- Generar Excel de gestión (motor de proyección, build_gestion_v2.py) ----------------
@@ -1311,12 +1311,12 @@ st.sidebar.divider()
 #     RDOS y leyendo el título 'Ronda N' de la hoja Results). La última ronda con RDOS ahí define la
 #     frontera REAL; la ronda a decidir es automáticamente N+1.
 #   - data/decisiones/       : Excels de trabajo con las proyecciones/decisiones de CADIZ, nombrados
-#     Cadiz_proyeccion_R{N}.xlsx. El botón toma el más reciente relevante (misma ronda en curso, o la
+#     Ulti_proyeccion_R{N}.xlsx. El botón toma el más reciente relevante (misma ronda en curso, o la
 #     ronda que acaba de pasar a REAL), rescata ahí las decisiones futuras ya cargadas y congela el
 #     plan de la ronda que acaba de cerrarse, todo dentro de generar_excel_desde_repo().
 # El archivo nuevo se arma en memoria (io.BytesIO, nunca se escribe en el disco del servidor) y se
-# ofrece para descargar con su nombre auto-detectado (Cadiz_proyeccion_R{N+1}.xlsx) -- el usuario lo
-# commitea a mano en data/decisiones/, mismo flujo manual que ya usa hoy para CADIZ_Gestion_v2.xlsx.
+# ofrece para descargar con su nombre auto-detectado (Ulti_proyeccion_R{N+1}.xlsx) -- el usuario lo
+# commitea a mano en data/decisiones/, mismo flujo manual que ya usa hoy para ULTI_Gestion_v2.xlsx.
 with st.sidebar.expander('🔧 Generar Excel de gestión (próximo año)'):
     st.caption('Lee los RDOS oficiales de `data/raw/practicas/oficial/` y las decisiones previas de '
                '`data/decisiones/` -- ya commiteados en el repo, no hace falta subir nada acá.')
@@ -1366,7 +1366,7 @@ seccion = st.sidebar.radio('Sección', SECCIONES, key='select_seccion_router')
 df_all = get_data(filtro_tipo)
 if df_all.empty or ronda_snapshot not in df_all['Ronda'].unique():
     # CASO ESPECIAL: CESIM todavía no publicó ningún RDOS de esta ronda (nada que mostrar en
-    # Resultados/Mercado/Operaciones/RRHH), pero CADIZ ya cargó su propia proyección en el modelo de
+    # Resultados/Mercado/Operaciones/RRHH), pero ULTI ya cargó su propia proyección en el modelo de
     # gestión para esa ronda -- en vez de un callejón sin salida, se muestra directamente el Control
     # de Gestión (lo único que SÍ hay para ofrecer) en la sección Finanzas. Fuera de Finanzas, o si
     # no hay proyección tampoco, se mantiene el aviso original sin cambios.
@@ -1383,7 +1383,7 @@ if df_all.empty or ronda_snapshot not in df_all['Ronda'].unique():
                                       'Control de Gestión': CROSSWALK_FINANZAS}
     if hay_proyeccion_cadiz and seccion in _CROSSWALK_POR_SECCION_BYPASS and empresa_analisis == MY_COMPANY:
         st.info(f"📁 CESIM todavía no publicó los RDOS de **{ronda_snapshot}** — el resto del tablero "
-                "no tiene datos para mostrar todavía, pero CADIZ ya cargó su proyección para este "
+                "no tiene datos para mostrar todavía, pero ULTI ya cargó su proyección para este "
                 "año en el modelo de gestión:")
         panel_comparativa_plan_real(df_all.copy(), ronda_snapshot, crosswalk=_CROSSWALK_POR_SECCION_BYPASS[seccion],
                                key_suffix=f'{seccion.lower()}_sin_real', mostrar_directo=True)
@@ -1519,7 +1519,7 @@ def _seccion_resultado_resumen():
     c2, c5 = st.columns(2)
     # color=COLOR_MAP.get(empresa_analisis): antes el sparkline caía al default de la función, que
     # (Adenda 25) dejó de asumir el lila/rojo de marca -- acá SÍ corresponde el color de identidad del
-    # equipo en foco (COLOR_MAP ya resuelve lila para CADIZ y el tono muted que le toque a cualquier
+    # equipo en foco (COLOR_MAP ya resuelve lila para ULTI y el tono muted que le toque a cualquier
     # otro equipo), así que se pasa explícito.
     # invertir: en el ranking, "para arriba" en el gráfico tiene que ser mejorar de puesto
     # OJO -- excepción deliberada al "doble delta en todos los casos": "Posición en el ranking" es
@@ -1553,7 +1553,7 @@ def _seccion_resultado_resumen():
         def g(metrica): return valor_de(pl, metrica) or 0.0
         ingresos = g('Ingresos por ventas')
         if ingresos > 0:
-            costos_prod = g('Costos de fabricación interna') + g('Costos de la característica') + g('Costos de fabricación contratada')
+            costos_prod = g('Costos de fabricación interna') + g('Costos de características') + g('Costos de fabricación contratada')
             costos_op = g('Costos de transporte y aranceles') + g('I+D') + g('Promoción') + g('Administración')
             depr, ints, imp, ben = g('Depreciación de Activos Fijos'), g('Gastos financieros netos'), g('Impuesto sobre el beneficio'), g('Beneficio de la ronda')
             _valores_puente = [ingresos, -costos_prod, -costos_op, -depr, -ints, -imp, ben]
@@ -1583,13 +1583,13 @@ def _seccion_resultado_resumen():
         mostrar(fig, ocultar_eje_valores='x')
     st.divider()
     st.subheader('Cuota de mercado')
-    # Antes: 5 gráficos de barra casi idénticos (global, por valor, EE.UU., China, Europa) -- mismo
+    # Antes: 5 gráficos de barra casi idénticos (global, por valor, EE.UU., Asia, Europa) -- mismo
     # tipo de gráfico repetido 5 veces es exactamente la queja de "muchos gráficos de barra". Acá se
     # reemplazan por DOS formas distintas, cada una elegida por el trabajo que hace mejor:
     #   1) Dumbbell (dos puntos + línea): compara cuota por UNIDADES vs. cuota por VALOR por equipo en
     #      un solo gráfico -- la distancia entre los dos puntos de cada equipo ES el dato interesante
     #      (vender una porción de unidades distinta a la de ingresos implica un mix de precio propio).
-    #   2) Heatmap: cuota por país (EE.UU./China/Europa) x equipo en una sola grilla -- reemplaza 3
+    #   2) Heatmap: cuota por país (EE.UU./Asia/Europa) x equipo en una sola grilla -- reemplaza 3
     #      barras por 1 sola lectura de matriz, con la tabla de datos completa abajo por accesibilidad.
     sub_global = df[(df['Estado'] == 'Informe de mercado, global') &
                      (df['Seccion'] == 'Cuotas de mercado globales, %') & (df['Metrica'] == 'Total') &
@@ -1637,7 +1637,7 @@ def _seccion_resultado_resumen():
     st.caption('Cada línea conecta la cuota de UN equipo en dos monedas de medida: unidades vendidas y valor en '
                'USD. Cuando el punto de Valor queda a la derecha del de Unidades, ese equipo vende más caro que '
                'el promedio (o con mejor mix); si queda a la izquierda, más barato.')
-    paises = ['EE.UU.', 'China', 'Europa']
+    paises = ['EE.UU.', 'Asia', 'Europa']
     filas_hm = []
     for pais in paises:
         sub_pais = df[(df['Estado'] == f'Informe de mercado, {pais}') &
@@ -1688,7 +1688,7 @@ def _seccion_resultado_mercado_macro():
     st.caption('Los 7 equipos y las 4 tecnologías sumados -- para ver si el negocio crece por '
                'volumen o por precio, sin el detalle de tecnología/equipo de la pestaña "Resumen" '
                'ni de la sección Mercado.')
-    paises_macro = ['EE.UU.', 'China', 'Europa']
+    paises_macro = ['EE.UU.', 'Asia', 'Europa']
 
     def _industria_dinamica_mercado(paises_incluir):
         """Ventas efectivas, Demanda Total (=Ventas+Demanda insatisfecha) y Valoración de toda la
@@ -1700,15 +1700,15 @@ def _seccion_resultado_mercado_macro():
         CESIM), así que no hace falta recalcularla sumando un componente de insatisfecha aparte.
 
         Valoración: NO se calcula como 'Precio de venta' nativo × Volumen -- el Precio de venta que
-        publica CESIM está en USD solo en EE.UU.; en China está en RMB y en Europa en EUR (ver
+        publica CESIM está en USD solo en EE.UU.; en Asia está en RMB y en Europa en EUR (ver
         Metrica 'Precio de venta, RMB' / 'Precio de venta, EUR' en cesim_parser). Convertir eso a USD
         acá asumiría un tipo de cambio que el RDOS no publica -- justo lo que se evita en toda la app
         (ver fila3_resultados_ingresos, que por eso muestra el waterfall de Ingresos en moneda
         nativa, sin convertir). En cambio se usa 'Ingresos por ventas' (Estado='Cuenta de resultados,
         miles USD, {país}', Sección 'Ingresos por ventas') -- CESIM YA reporta esa cifra en USD para
-        las 3 regiones (el título de la hoja lo dice, 'miles USD', incluso para China/Europa: es la
+        las 3 regiones (el título de la hoja lo dice, 'miles USD', incluso para Asia/Europa: es la
         cifra que el propio simulador usa para consolidar el P&L Global). Verificado contra los RDOS
-        reales de CADIZ (R0-R3): sumar 'de mercados' (EE.UU./China, único componente que es venta
+        reales de CADIZ (R0-R3): sumar 'de mercados' (EE.UU./Asia, único componente que es venta
         real a consumidor) + 'Ingresos por ventas' (Europa, que al no tener fábrica propia no tiene
         el desglose 'de mercados' / 'de transferencias internas') reconcilia EXACTO con 'Cuenta de
         resultados, miles USD, Global' de cada equipo/ronda. Se excluye 'de transferencias internas'
@@ -1780,7 +1780,7 @@ def _seccion_resultado_mercado_macro():
     st.markdown('###### Dinámica de Mercado por Tecnología')
     st.caption('Mismo par Demanda Total / Valoración de arriba, pero desagregado por cada '
                'tecnología con demanda real registrada (>0, en cualquier año) en el mercado elegido '
-               '-- Hidrógeno no aparece todavía porque, al día de hoy, ningún equipo vendió en esa '
+               '-- Tec 4 no aparece todavía porque, al día de hoy, ningún equipo vendió en esa '
                'tecnología (línea sólida = volumen, punteada = valorización).')
     COLOR_TECH_MERCADO = dict(zip(_TECNOLOGIAS_GAP, MUTED_SIN_MARRON))
 
@@ -1790,10 +1790,10 @@ def _seccion_resultado_mercado_macro():
         la Valoración) NO existen a nivel 'Cuenta de resultados' (esa hoja ya viene sumada por
         tecnología) -- CESIM sí los publica en 'Desglose de margen por tec, miles USD, {país}' ->
         Metrica='Ingresos por ventas', Seccion=tecnología. Verificado contra RDOS reales de CADIZ
-        (R0-R3, EE.UU./China/Europa): sumado sobre tecnologías, reconcilia EXACTO con la cifra de
+        (R0-R3, EE.UU./Asia/Europa): sumado sobre tecnologías, reconcilia EXACTO con la cifra de
         Ingresos a nivel compañía ya validada en _industria_dinamica_mercado (ver esa nota) -- así que
         es la misma fuente 100% real, ya en USD, solo que sin colapsar la dimensión tecnología."""
-        paises = ['EE.UU.', 'China', 'Europa'] if pais_scope == 'Global' else [pais_scope]
+        paises = ['EE.UU.', 'Asia', 'Europa'] if pais_scope == 'Global' else [pais_scope]
         ing = df[(df['Estado'].isin([f'Desglose de margen por tec, miles USD, {p}' for p in paises])) &
                  (df['Metrica'] == 'Ingresos por ventas') & (df['Seccion'].isin(_TECNOLOGIAS_GAP))].copy()
         ven = df[(df['Estado'].isin([f'Informe de mercado, {p}' for p in paises])) &
@@ -1820,7 +1820,7 @@ def _seccion_resultado_mercado_macro():
         # app. Dividir Ingresos_absoluto / Ventas_miles da un precio 1000x MÁS GRANDE de lo real (el
         # denominador está 1000x más chico) -- hay que volver a bajarlo /1000 para tener USD/u.
         # absoluto real (verificado: así coincide en orden de magnitud con 'Precio de venta' nativo de
-        # CESIM, ej. ~$22.500/u. EE.UU. Combustión R2, no ~$22.500.000/u.).
+        # CESIM, ej. ~$22.500/u. EE.UU. Tec 1 R2, no ~$22.500.000/u.).
         out['PrecioPromedio'] = (out['Ingresos'] / out['Ventas'].replace(0, pd.NA)) / 1000.0
         # Con PrecioPromedio ya absoluto y DemandaTotal todavía en miles, el producto queda en "miles
         # de USD" -- ese x1000 sigue haciendo falta acá (es el mismo que antes, no lo introduce esta
@@ -1831,15 +1831,15 @@ def _seccion_resultado_mercado_macro():
     pais_tech_sel = st.selectbox('Mercado', ['Global'] + paises_macro, key='sel_mercado_tech_dinamica')
     serie_tech = _industria_dinamica_mercado_tech(pais_tech_sel)
     # BUG REPORTADO Y CONFIRMADO (Mati, con captura de este gráfico: "Dinámica de Mercado por
-    # Tecnología -- China", Eléctrico no aparecía): la versión anterior recortaba a top2_tech[:2],
-    # las 2 tecnologías con MÁS Demanda del año en foco -- en China, Eléctrico SÍ tiene demanda real
-    # desde R4 (confirmado contra RDOS), pero en volumen absoluto queda 3° detrás de Combustión e
-    # Híbrido, así que el cap de 2 lo excluía siempre, aunque tuviera datos reales. Fix: se muestran
+    # Tecnología -- Asia", Tec 3 no aparecía): la versión anterior recortaba a top2_tech[:2],
+    # las 2 tecnologías con MÁS Demanda del año en foco -- en Asia, Tec 3 SÍ tiene demanda real
+    # desde R4 (confirmado contra RDOS), pero en volumen absoluto queda 3° detrás de Tec 1 e
+    # Tec 2, así que el cap de 2 lo excluía siempre, aunque tuviera datos reales. Fix: se muestran
     # TODAS las tecnologías con demanda real (>0) en CUALQUIER año para el mercado elegido -- mismo
     # criterio "activa" que ya usaba el fallback de abajo (y que usa la Curva de Aprendizaje), ahora
     # aplicado siempre y no solo cuando el año en foco no alcanza a distinguir 2. Con los datos
-    # reales de este repo (R0-R6) esto muestra 3 tecnologías (Combustión/Híbrido/Eléctrico) -- nunca
-    # Hidrógeno, que sigue en 0 unidades en los 3 mercados.
+    # reales de este repo (R0-R6) esto muestra 3 tecnologías (Tec 1/Tec 2/Tec 3) -- nunca
+    # Tec 4, que sigue en 0 unidades en los 3 mercados.
     tech_mostrar = [t for t in _TECNOLOGIAS_GAP if (serie_tech[serie_tech['Tecnología'] == t]['DemandaTotal'].fillna(0) > 0).any()]
     if not tech_mostrar:
         st.info(f'Sin datos de demanda por tecnología para {pais_tech_sel}.')
@@ -1874,7 +1874,7 @@ def _seccion_resultado_mercado_macro():
                'cada mercado, en el año seleccionado.')
     # category_orders fija el orden de categoría->color de Plotly (mismo criterio que ya usa el
     # gráfico de Balance ESG más abajo, con category_orders={'Empresa': orden_emp}) -- sin esto, una
-    # tecnología ausente en un país (ej. Eléctrico todavía sin ventas) corre el orden de aparición y
+    # tecnología ausente en un país (ej. Tec 3 todavía sin ventas) corre el orden de aparición y
     # cada donut le asigna un color de MUTED_SIN_MARRON distinto a la MISMA tecnología (mismo bug de
     # fondo que ya se corrigió en 'Mix tecnológico', Adenda 25 -- acá se previene desde el vamos).
     col1, col2, col3 = st.columns(3)
@@ -1904,11 +1904,11 @@ def seccion_mercado():
     # sub-pestaña 'Mercado' dentro de seccion_resultado() (junto a 'Resumen'); ver
     # _seccion_resultado_mercado_macro() más abajo. Esta sección vuelve a sus 3 pestañas originales.
     tab_pos, tab_pan, tab_evo = st.tabs(['Posicionamiento', 'Panorama Competitivo', 'Evolución'])
-    tecnologias = ['Combustión', 'Híbrido', 'Eléctrico', 'Hidrógeno']
+    tecnologias = ['Tec 1', 'Tec 2', 'Tec 3', 'Tec 4']
 
     with tab_pos:
         c1, c2 = st.columns(2)
-        pais_sel = c1.selectbox('Mercado', ['EE.UU.', 'China', 'Europa'], key='sel_mercado_pais')
+        pais_sel = c1.selectbox('Mercado', ['EE.UU.', 'Asia', 'Europa'], key='sel_mercado_pais')
         tech_sel = c2.selectbox('Tecnología', tecnologias, key='sel_mercado_tech')
         estado_pais = f'Informe de mercado, {pais_sel}'
         sub = df[(df['Estado'] == estado_pais) & (df['Seccion'] == tech_sel) & (df['Ronda'] == ronda_snapshot)]
@@ -2011,7 +2011,7 @@ def seccion_mercado():
 
     with tab_pan:
         c1p, c2p = st.columns(2)
-        pais_pan = c1p.selectbox('Mercado', ['EE.UU.', 'China', 'Europa'], key='sel_pan_pais')
+        pais_pan = c1p.selectbox('Mercado', ['EE.UU.', 'Asia', 'Europa'], key='sel_pan_pais')
         tech_pan = c2p.selectbox('Tecnología', tecnologias, key='sel_pan_tech')
         estado_pan = f'Informe de mercado, {pais_pan}'
 
@@ -2088,7 +2088,7 @@ def seccion_mercado():
                 st.info('Sin ventas por equipo en esta combinación.')
 
     with tab_evo:
-        pais_evo = st.selectbox('Mercado', ['EE.UU.', 'China', 'Europa'], key='sel_evo_pais')
+        pais_evo = st.selectbox('Mercado', ['EE.UU.', 'Asia', 'Europa'], key='sel_evo_pais')
         estado_evo = f'Informe de mercado, {pais_evo}'
 
         st.markdown('**Demanda total vs. ventas totales de la industria, por tecnología**')
@@ -2125,7 +2125,7 @@ def seccion_mercado():
 
         st.divider()
         st.markdown(f'**Evolución de la cuota de mercado — {pais_evo}**')
-        st.caption('Los 7 equipos, CADIZ resaltado.')
+        st.caption('Los 7 equipos, ULTI resaltado.')
         share_hist = df[(df['Estado'] == estado_evo) & (df['Seccion'] == f'{pais_evo} cuotas de mercado, %') &
                          (df['Metrica'].str.strip() == 'Total')].copy()
         chart_evolucion(share_hist, f'Cuota de mercado, % — {pais_evo}')
@@ -2145,10 +2145,10 @@ def seccion_operaciones():
     # de Gestión'.
     bloque1, bloque2 = st.tabs(['Capacidad y Costos', 'Inventario y Logística'])
     with bloque1:
-        cap = df[(df['Estado'] == 'Detalles de fabricación') & (df['Seccion'] == 'Capacidad empleada, %') & (df['Empresa'] == empresa_analisis) & (df['Ronda'] == ronda_snapshot) & (df['Subgrupo'].isin(['EE.UU.', 'China']))].copy()
+        cap = df[(df['Estado'] == 'Detalles de fabricación') & (df['Seccion'] == 'Capacidad empleada, %') & (df['Empresa'] == empresa_analisis) & (df['Ronda'] == ronda_snapshot) & (df['Subgrupo'].isin(['EE.UU.', 'Asia'])) & (df['Metrica'] != 'Capacidad Disponible')].copy()
         cap['Valor'] = num(cap['Valor'])
-        # Cesim reporta la capacidad usada POR TECNOLOGÍA dentro de cada país (ej. Combustión 45% +
-        # Híbrido 40% en EE.UU. = 85% de la planta) — hay que sumarlas para tener el % real de la planta,
+        # Cesim reporta la capacidad usada POR TECNOLOGÍA dentro de cada país (ej. Tec 1 45% +
+        # Tec 2 40% en EE.UU. = 85% de la planta) — hay que sumarlas para tener el % real de la planta,
         # si no, cada tecnología aparecía como una gauge separada.
         cap = cap.dropna(subset=['Valor']).groupby('Subgrupo', as_index=False)['Valor'].sum()
         if not cap.empty:
@@ -2188,7 +2188,7 @@ def seccion_operaciones():
         # línea plana en 0 para una combinación país/tecnología donde el equipo nunca produjo).
         costo_hist = df[(df['Estado'] == 'Informe de costos') &
                          (df['Seccion'] == 'Costo de producción interna por unidad, USD') &
-                         (df['Subgrupo'].isin(['EE.UU.', 'China'])) &
+                         (df['Subgrupo'].isin(['EE.UU.', 'Asia'])) &
                          (df['Empresa'] == empresa_analisis)].copy()
         costo_hist['Valor'] = num(costo_hist['Valor'])
         costo_hist = costo_hist.dropna(subset=['Valor']).sort_values('Ronda_Orden')
@@ -2223,7 +2223,7 @@ def seccion_operaciones():
                                                 marker=dict(size=6), text=textos, hovertemplate='%{text}<extra></extra>'))
                 if len(valores) >= 2 and valores[0]:
                     # 'desde Ronda 0' es la base LITERAL para las plantas que ya producían en la Ronda
-                    # 0 (ej. Combustión); una tecnología incorporada después (ej. Híbrido, sin datos
+                    # 0 (ej. Tec 1); una tecnología incorporada después (ej. Tec 2, sin datos
                     # hasta Ronda 1) no tiene punto en Ronda 0 -- se rotula con su propia ronda base
                     # (rondas[0]) para no atribuirle una reducción "desde Ronda 0" que no existió.
                     reduccion_acum = (valores[0] - valores[-1]) / valores[0] * 100
@@ -2241,7 +2241,7 @@ def seccion_operaciones():
         prod = df[(df['Estado'] == 'Detalles de fabricación') &
                   (df['Seccion'].isin(['Producción interna, miles unidades', 'Producción contratada, miles unidades'])) &
                   (df['Empresa'] == empresa_analisis) & (df['Ronda'] == ronda_snapshot) &
-                  (df['Subgrupo'].isin(['EE.UU.', 'China']))].copy()
+                  (df['Subgrupo'].isin(['EE.UU.', 'Asia']))].copy()
         prod['Valor'] = num(prod['Valor'])
         prod = prod.dropna(subset=['Valor']).groupby(['Subgrupo', 'Seccion'], as_index=False)['Valor'].sum()
         prod['Tipo'] = prod['Seccion'].map({'Producción interna, miles unidades': 'Interna', 'Producción contratada, miles unidades': 'Contratada'})
@@ -2271,7 +2271,7 @@ def seccion_operaciones():
                 # es un mercado, no identidad de CADIZ.
                 # Fix "ya casi": MUTED_PALETTE[5] era casi idéntico a [0] -- mismo reemplazo por sage.
                 fig_fab = px.bar(fab_piv, x='Empresa', y='Valor', color='Metrica', barmode='stack',
-                                  color_discrete_map={'EE.UU.': MUTED_PALETTE[2], 'China': MUTED_PALETTE[0]},
+                                  color_discrete_map={'EE.UU.': MUTED_PALETTE[2], 'Asia': MUTED_PALETTE[0]},
                                   text=fab_piv['Valor'].apply(lambda v: f'{v:,.0f}'),
                                   title=f'Fábricas por equipo — {ronda_snapshot}')
                 fig_fab.update_traces(textposition='inside')
@@ -2300,7 +2300,7 @@ def seccion_operaciones():
             # sin un escalón intermedio duplicado.
             etapas = [('Ingresos por Ventas', ingresos)]
             etapas.append(('Margen tras Fab. Interna', etapas[-1][1] - g('Costos de fabricación interna')))
-            etapas.append(('Margen tras Características', etapas[-1][1] - g('Costos de la característica')))
+            etapas.append(('Margen tras Características', etapas[-1][1] - g('Costos de características')))
             etapas.append(('Margen tras Fab. Contratada', etapas[-1][1] - g('Costos de fabricación contratada')))
             etapas.append(('Margen tras Logística', etapas[-1][1] - g('Costos de transporte y aranceles')))
             ebitda = etapas[-1][1] - g('I+D') - g('Promoción') - g('Administración')
@@ -2335,8 +2335,8 @@ def seccion_operaciones():
             st.info('Sin datos de proveedores para esta combinación.')
         st.divider()
         c3, c4 = st.columns(2)
-        pais_ue = c3.selectbox('País — Margen Unitario', ['EE.UU.', 'China', 'Europa'], key='sel_op_pais')
-        tech_ue = c4.selectbox('Tecnología — Margen Unitario', ['Combustión', 'Híbrido', 'Eléctrico', 'Hidrógeno'], key='sel_op_tech')
+        pais_ue = c3.selectbox('País — Margen Unitario', ['EE.UU.', 'Asia', 'Europa'], key='sel_op_pais')
+        tech_ue = c4.selectbox('Tecnología — Margen Unitario', ['Tec 1', 'Tec 2', 'Tec 3', 'Tec 4'], key='sel_op_tech')
         margen = df[(df['Estado'] == f'Desglose de margen por tec, miles USD, {pais_ue}') & (df['Seccion'] == tech_ue) & (df['Empresa'] == empresa_analisis) & (df['Ronda'] == ronda_snapshot)]
         mercado = df[(df['Estado'] == f'Informe de mercado, {pais_ue}') & (df['Seccion'] == tech_ue) & (df['Ronda'] == ronda_snapshot)]
         # Adenda 32 (escala centralizada en cesim_parser): 'margen' (Estado "miles USD") ya llega
@@ -2350,7 +2350,7 @@ def seccion_operaciones():
             p_venta = gm('Ingresos por ventas') / unidades
             c_prod = -gm('Fabricación propia y por contrato') / unidades
             c_flete = -gm('Transporte y aranceles') / unidades
-            c_caract = -gm('Costos de la característica') / unidades
+            c_caract = -gm('Costos de características') / unidades
             m_bruto = gm('Beneficio bruto') / unidades
             _valores_margen_ue = [p_venta, c_prod, c_flete, c_caract, m_bruto]
             fig_ue = go.Figure(go.Waterfall(
@@ -2391,7 +2391,7 @@ def seccion_operaciones():
                     m_bruto_prev = gm_prev('Beneficio bruto') / unidades_prev
                     costo_total_unit_prev = -(-gm_prev('Fabricación propia y por contrato') / unidades_prev
                                                - gm_prev('Transporte y aranceles') / unidades_prev
-                                               - gm_prev('Costos de la característica') / unidades_prev)
+                                               - gm_prev('Costos de características') / unidades_prev)
                     margen_pct_prev = (m_bruto_prev / p_venta_prev * 100) if p_venta_prev else None
                     markup_pct_prev = (m_bruto_prev / costo_total_unit_prev * 100) if costo_total_unit_prev else None
             delta_margen_pct = (margen_pct - margen_pct_prev) if (margen_pct is not None and margen_pct_prev is not None) else None
@@ -2413,7 +2413,7 @@ def seccion_operaciones():
                     _m_bruto_e = _gme('Beneficio bruto') / _unid_emp
                     _costo_e = -(-_gme('Fabricación propia y por contrato') / _unid_emp
                                  - _gme('Transporte y aranceles') / _unid_emp
-                                 - _gme('Costos de la característica') / _unid_emp)
+                                 - _gme('Costos de características') / _unid_emp)
                     margen_pct_todos[_emp] = (_m_bruto_e / _p_venta_e * 100) if _p_venta_e else None
                     markup_pct_todos[_emp] = (_m_bruto_e / _costo_e * 100) if _costo_e else None
                 else:
@@ -2456,7 +2456,7 @@ def seccion_operaciones():
         # que hace falta acá.
         cm_total = 0.0
         vol_total_miles = 0.0
-        for mercado_be in ['EE.UU.', 'China', 'Europa']:
+        for mercado_be in ['EE.UU.', 'Asia', 'Europa']:
             margen_be = df[(df['Estado'] == f'Desglose de margen por tec, miles USD, {mercado_be}') &
                            (df['Empresa'] == empresa_analisis) & (df['Ronda'] == ronda_snapshot) &
                            (df['Metrica'] == 'Margen de contribución')].copy()
@@ -2484,8 +2484,8 @@ def seccion_operaciones():
             st.info('Sin datos suficientes de ventas/margen para calcular el punto de equilibrio.')
     with bloque2:
         c1, c2 = st.columns(2)
-        pais_sel = c1.selectbox('País Inventario', ['EE.UU.', 'China', 'Europa'], key='sel_inv_pais')
-        tech_sel = c2.selectbox('Tecnología — Inventario', ['Combustión', 'Híbrido', 'Eléctrico', 'Hidrógeno'], key='sel_inv_tech')
+        pais_sel = c1.selectbox('País Inventario', ['EE.UU.', 'Asia', 'Europa'], key='sel_inv_pais')
+        tech_sel = c2.selectbox('Tecnología — Inventario', ['Tec 1', 'Tec 2', 'Tec 3', 'Tec 4'], key='sel_inv_tech')
         log = df[(df['Estado'] == 'Detalles de logística') & (df['Empresa'] == empresa_analisis) & (df['Seccion'] == f'{tech_sel}, miles unidades') & (df['Subgrupo'] == pais_sel) & (df['Ronda'] == ronda_snapshot)].copy()
         log['Valor'] = num(log['Valor'])
         d = log.set_index('Metrica')['Valor']
@@ -2538,9 +2538,9 @@ def seccion_operaciones():
         def val_log(planta, metrica):
             r = log_tech[(log_tech['Subgrupo'] == planta) & (log_tech['Metrica'] == metrica)]['Valor']
             return abs(pd.to_numeric(r.iloc[0], errors='coerce')) if len(r) else 0.0
-        destinos = ['EE.UU.', 'China', 'Europa']
-        matriz = pd.DataFrame(0.0, index=['EE.UU.', 'China', 'Subcontratado'], columns=destinos)
-        for planta in ['EE.UU.', 'China']:
+        destinos = ['EE.UU.', 'Asia', 'Europa']
+        matriz = pd.DataFrame(0.0, index=['EE.UU.', 'Asia', 'Subcontratado'], columns=destinos)
+        for planta in ['EE.UU.', 'Asia']:
             interna, contratada = val_log(planta, 'Producción interna'), val_log(planta, 'Producción contratada')
             tot = interna + contratada
             flows = {dst: val_log(planta, f'Ventas en {planta}' if dst == planta else f'Exportado a {dst}') for dst in destinos}
@@ -2836,7 +2836,7 @@ def seccion_finanzas():
             mostrar(fig_divp, margen_b=90, altura=420)
             st.caption('Monto real pagado a la casa matriz en concepto de dividendos (RDOS de CESIM), apilado '
                        'por año dentro de cada empresa -- ordenadas de mayor a menor dividendo acumulado '
-                       '(Año 0 no se incluye: ningún equipo paga dividendos ese año). CADIZ en tono lila para '
+                       '(Año 0 no se incluye: ningún equipo paga dividendos ese año). ULTI en tono lila para '
                        'diferenciarse; los segmentos chicos no muestran número para no saturar la lectura, '
                        'pero el valor exacto aparece al pasar el mouse. Para cruzarlo contra el retorno total '
                        'al accionista de cada equipo, ver "Retorno Total Acumulado del Accionista (TSR)" en '
@@ -2904,7 +2904,7 @@ def seccion_finanzas():
                                    yaxis_title='USD',
                                    legend=dict(orientation='h', yanchor='top', y=-0.18, xanchor='center', x=0.5))
             mostrar(fig_cap, margen_b=90, altura=420)
-            st.caption(f'Barra (azul, lila para CADIZ) + verde/rojo = techo teórico de lo repartible (Ganancias '
+            st.caption(f'Barra (azul, lila para ULTI) + verde/rojo = techo teórico de lo repartible (Ganancias '
                        f'Acumuladas al cierre de {etq_prev} + Beneficio de {ronda_snapshot}, antes de cualquier '
                        'dividendo de esta ronda). Línea = Efectivo real disponible. Un equipo con barra alta y '
                        'línea baja tiene "ganancias de papel" sin respaldo en caja -- poco probable que pague '
@@ -3156,7 +3156,7 @@ def seccion_finanzas():
                 fig_rango.add_annotation(x=0, y=i, text=f'{vmin:,.1f}{suf}', showarrow=False, xshift=-30, font=dict(size=11, color=color_ref))
                 fig_rango.add_annotation(x=100, y=i, text=f'{vmax:,.1f}{suf}', showarrow=False, xshift=30, font=dict(size=11, color=color_ref))
 
-            fig_rango.update_layout(yaxis=dict(tickmode='array', tickvals=list(range(len(ejes_validos))), ticktext=list(ejes_validos.keys())), xaxis=dict(range=[-15, 115]), title='Rango de Industria (Mín / Mediana / CÁDIZ / Máx)')
+            fig_rango.update_layout(yaxis=dict(tickmode='array', tickvals=list(range(len(ejes_validos))), ticktext=list(ejes_validos.keys())), xaxis=dict(range=[-15, 115]), title='Rango de Industria (Mín / Mediana / ULTI / Máx)')
             mostrar(fig_rango, ocultar_eje_valores='x')
 
         # ---- Deuda y liquidez (Adenda 26: antes vivía en la pestaña "Corto Plazo", ahora acá) ----
@@ -3298,7 +3298,7 @@ def seccion_rrhh_sostenibilidad():
         st.divider()
         st.subheader('Impacto ambiental')
         c1, c2 = st.columns(2)
-        pais_esg = c1.selectbox('País', ['EE.UU.', 'China'], key='pais_esg_rrhh')
+        pais_esg = c1.selectbox('País', ['EE.UU.', 'Asia'], key='pais_esg_rrhh')
         ind = c2.selectbox('Indicador', ['Emisiones de CO2', 'Consumo de energía', 'Consumo de agua'], key='ind_esg_rrhh')
         dicc = {'Emisiones de CO2': 'Total, toneladas métricas', 'Consumo de energía': 'Total, MWh', 'Consumo de agua': 'Total, miles de m3'}
         sub_amb = df[(df['Estado'] == 'Informe ESG') & (df['Seccion'] == f'Impacto ambiental, {pais_esg}') & (df['Metrica'] == dicc[ind])]
@@ -3386,8 +3386,8 @@ def seccion_control_gestion():
     'Equipo en foco') -- si se está mirando otro equipo, se avisa en vez de mostrar el gap de CADIZ
     sin aclarar de quién es (mismo criterio que ya usaba cada sub-pestaña vieja)."""
     if empresa_analisis != MY_COMPANY:
-        st.caption('Control de Gestión es sobre la proyección propia de CADIZ en el modelo de gestión — '
-                   'cambiá "Equipo en foco" a CADIZ en la barra lateral para verlo.')
+        st.caption('Control de Gestión es sobre la proyección propia de ULTI en el modelo de gestión — '
+                   'cambiá "Equipo en foco" a ULTI en la barra lateral para verlo.')
         return
     ronda_num_cg = ronda_a_num(ronda_snapshot)
     df_proy_cg = get_proyeccion(ronda_num_cg)
@@ -3410,7 +3410,7 @@ def seccion_control_gestion():
     # Mercado al inicio del nivel alimenta los tres gráficos (antes cada uno tenía su propio
     # st.selectbox('Mercado', ...) redundante, con la misma lista _MERCADOS_GAP).
     # OJO (Categoría 3, decisión de modelización, no pedida explícitamente): el selector NO incluye
-    # "Global" -- _MERCADOS_GAP = ["EE.UU.", "China", "Europa"] son las 3 monedas nativas en las que
+    # "Global" -- _MERCADOS_GAP = ["EE.UU.", "Asia", "Europa"] son las 3 monedas nativas en las que
     # CESIM reporta Precio de venta/Ingresos (USD/RMB/EUR, ver MONEDA_MERCADO en gap_analysis.py); el
     # waterfall de Ingresos ya documentaba (ver su caption) que NO se consolida a una sola moneda para
     # no asumir un tipo de cambio que el simulador no publica. Si se agrega "Global" al selector, ese

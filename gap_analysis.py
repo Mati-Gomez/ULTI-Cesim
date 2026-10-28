@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-gap_analysis.py -- Control de gestión: compara la PROYECCIÓN de CADIZ (leída DIRECTAMENTE de
-CADIZ_Gestion_v2.xlsx!DATA_EXPORT -- ver Adenda 10 / hotfix README) contra el dato REAL (el df tidy
+gap_analysis.py -- Control de gestión: compara la PROYECCIÓN de ULTI (leída DIRECTAMENTE de
+ULTI_Gestion_v2.xlsx!DATA_EXPORT -- ver Adenda 10 / hotfix README) contra el dato REAL (el df tidy
 que ya arma cesim_parser.build_historico() a partir de los RDOS oficiales) para los KPIs listados en
 metric_crosswalk.py.
 
 DISEÑO (corregido): ya no hay un CSV intermedio que mantener sincronizado a mano. El usuario sube el
-Excel de gestión directamente a la raíz del repo (siempre con el mismo nombre, `CADIZ_Gestion_v2.xlsx`)
+Excel de gestión directamente a la raíz del repo (siempre con el mismo nombre, `ULTI_Gestion_v2.xlsx`)
 cada vez que hay una versión nueva; `load_proyeccion()` lo lee de ahí en cada carga de la app, así que
 la versión presente en el repo es automáticamente "la más actual" -- sin exportar nada a mano.
 
-Solo tiene sentido para RONDAS OFICIALES con número de ronda (el modelo de Excel de CADIZ proyecta
+Solo tiene sentido para RONDAS OFICIALES con número de ronda (el modelo de Excel de ULTI proyecta
 rondas oficiales, no las de práctica) -- para una ronda de práctica, o una ronda oficial que el
 modelo todavía no cubre, calcular_gaps() devuelve estado='sin_proyeccion' para cada KPI en vez de
 inventar un cruce.
@@ -36,7 +36,7 @@ DEFAULT_PROYECCION_EXCEL = DEFAULT_EXCEL
 # ------------------------------------------------------------------------------------------------
 # NOTA (retirado parche de escala): hasta esta versión existía acá un parche `_corregir_escala_
 # plan_usd()` que dividía /1000 todo valor status=='PLAN' + unit=='USD'. Se apoyaba en un benchmark
-# "REAL" equivocado -- 'Ingresos por ventas' real de CADIZ Ronda 1 = 46,479,518.40 USD -- que en
+# "REAL" equivocado -- 'Ingresos por ventas' real de ULTI Ronda 1 = 46,479,518.40 USD -- que en
 # realidad es el valor CRUDO del RDOS ("miles USD" sin multiplicar), no el valor real en USD
 # absolutos (que es 46,479,518,404.93 USD, ~46.48 MIL MILLONES, verificado bottom-up: precio de
 # venta x volumen vendido x tipo de cambio sumado en las 3 áreas y 2 tecnologías activas, contra el
@@ -50,8 +50,8 @@ DEFAULT_PROYECCION_EXCEL = DEFAULT_EXCEL
 # ------------------------------------------------------------------------------------------------
 
 
-def load_proyeccion(path=DEFAULT_PROYECCION_EXCEL, team="CADIZ"):
-    """Lee la proyección de CADIZ directamente de CADIZ_Gestion_v2.xlsx!DATA_EXPORT. Devuelve None
+def load_proyeccion(path=DEFAULT_PROYECCION_EXCEL, team="ULTI"):
+    """Lee la proyección de ULTI directamente de ULTI_Gestion_v2.xlsx!DATA_EXPORT. Devuelve None
     si el archivo todavía no fue subido al repo, o si algo falla al leerlo (hoja faltante, encabezado
     desalineado, archivo corrupto) -- el tablero debe poder arrancar igual, mostrando la sección de
     Control de Gestión como no disponible en vez de romper toda la app."""
@@ -64,7 +64,7 @@ def load_proyeccion(path=DEFAULT_PROYECCION_EXCEL, team="CADIZ"):
     return df
 
 
-def _valor_proyeccion(df_proy, ronda_num, spec, team="CADIZ"):
+def _valor_proyeccion(df_proy, ronda_num, spec, team="ULTI"):
     if df_proy is None or ronda_num is None:
         return None, None
     sub = df_proy[(df_proy["round"] == ronda_num) & (df_proy["team"] == team) &
@@ -91,7 +91,7 @@ def _valor_proyeccion(df_proy, ronda_num, spec, team="CADIZ"):
     return val, row["status"]   # status: REAL (histórico) o PLAN (proyección propia)
 
 
-def _valor_real(df_real, ronda_nombre, spec, team="CADIZ"):
+def _valor_real(df_real, ronda_nombre, spec, team="ULTI"):
     if df_real is None or ronda_nombre is None:
         return None
     sub = df_real[(df_real["Ronda"] == ronda_nombre) & (df_real["Empresa"] == team) &
@@ -102,9 +102,9 @@ def _valor_real(df_real, ronda_nombre, spec, team="CADIZ"):
         return None
     # Adenda 26 (mismo bug de "Comparativa Plan vs. Real" de Mercado): sin filtro de 'seccion', antes
     # se tomaba .iloc[0] -- correcto para las métricas de un solo renglón (Global, sin desglose), pero
-    # 'Demanda, miles unidades' viene desglosada por Seccion=tecnología (Combustión/Híbrido/Eléctrico/
-    # Hidrógeno, ver 'Informe de mercado, {país}') SIN una fila de total ya sumado -- .iloc[0] se
-    # quedaba con una sola tecnología (ej. solo Combustión) en vez de la demanda total. Se cambia a
+    # 'Demanda, miles unidades' viene desglosada por Seccion=tecnología (Tec 1/Tec 2/Tec 3/
+    # Tec 4, ver 'Informe de mercado, {país}') SIN una fila de total ya sumado -- .iloc[0] se
+    # quedaba con una sola tecnología (ej. solo Tec 1) en vez de la demanda total. Se cambia a
     # sumar todas las filas que matchean -- no cambia nada para las métricas de un solo renglón
     # (verificado: EBITDA/Margen bruto/Efectivo/EPS/Retorno del accionista, Global, siempre 1 fila),
     # y corrige las que sí vienen desglosadas sin filtro de Seccion.
@@ -114,13 +114,13 @@ def _valor_real(df_real, ronda_nombre, spec, team="CADIZ"):
     return sub.iloc[0]["Valor"]   # texto (p.ej. calificación crediticia) -- no summable
 
 
-def _valor_real_utilizacion_capacidad(df_real, df_proy, ronda_nombre, ronda_num, region, team="CADIZ"):
-    """Reconstruye el % de utilización de capacidad REAL de un área (EE.UU./China) que el RDOS no
+def _valor_real_utilizacion_capacidad(df_real, df_proy, ronda_nombre, ronda_num, region, team="ULTI"):
+    """Reconstruye el % de utilización de capacidad REAL de un área (EE.UU./Asia) que el RDOS no
     publica como un único dato -- lo publica desglosado por tecnología ('Detalles de fabricación' ->
     Seccion='Capacidad empleada, %', Subgrupo=área, Metrica=tecnología). Se reconstruye con la MISMA
     lógica que usa el motor Excel para su propio lado Plan: (Producción interna real, sumada todas
     las tecnologías del área) / Capacidad operativa (cierre de ronda, leída de DATA_EXPORT -- no una
-    constante hardcodeada acá, para que se actualice sola si CADIZ invierte/desinvierte capacidad en
+    constante hardcodeada acá, para que se actualice sola si ULTI invierte/desinvierte capacidad en
     una ronda futura). Verificado EXACTO contra Ronda 1 real: 68,0% en ambas áreas.
 
     Devuelve el resultado en escala 0-100 (mismo convención que el resto de los campos 'real' de
@@ -152,13 +152,13 @@ def _valor_real_utilizacion_capacidad(df_real, df_proy, ronda_nombre, ronda_num,
     return prod_total / cap_val * 100.0
 
 
-TECNOLOGIAS = ["Combustión", "Híbrido", "Eléctrico", "Hidrógeno"]
-MERCADOS = ["EE.UU.", "China", "Europa"]
-AREAS = ["EE.UU.", "China"]
-MONEDA_MERCADO = {"EE.UU.": "USD", "China": "RMB", "Europa": "EUR"}
+TECNOLOGIAS = ["Tec 1", "Tec 2", "Tec 3", "Tec 4"]
+MERCADOS = ["EE.UU.", "Asia", "Europa"]
+AREAS = ["EE.UU.", "Asia"]
+MONEDA_MERCADO = {"EE.UU.": "USD", "Asia": "RMB", "Europa": "EUR"}
 
 
-def _valor_real_grano(df_real, ronda_nombre, estado, seccion, metrica, subgrupo=None, empresa="CADIZ"):
+def _valor_real_grano(df_real, ronda_nombre, estado, seccion, metrica, subgrupo=None, empresa="ULTI"):
     """Como _valor_real, pero además puede filtrar por 'Subgrupo' -- necesario para los campos reales
     (Adenda 12) donde Estado+Seccion+Metrica NO alcanza para identificar una sola fila (ej. 'Informe
     de costos': Seccion='Costo de producción interna por unidad, USD', Metrica=tecnología, y el ÁREA
@@ -178,7 +178,7 @@ def _valor_real_grano(df_real, ronda_nombre, estado, seccion, metrica, subgrupo=
         return None
 
 
-def precio_volumen_mercado(df_real, df_proy, ronda_nombre, ronda_num, mercado, team="CADIZ"):
+def precio_volumen_mercado(df_real, df_proy, ronda_nombre, ronda_num, mercado, team="ULTI"):
     """Precio y volumen (Plan y Real) de `team` en un mercado, por tecnología -- insumo del Análisis
     de Desvíos de Ingresos (Precio/Volumen/Mix, Adenda 12). El precio queda en la moneda NATIVA del
     mercado (MONEDA_MERCADO) en ambos lados -- ni CESIM ni este cálculo convierten a USD, así que no
@@ -193,7 +193,7 @@ def precio_volumen_mercado(df_real, df_proy, ronda_nombre, ronda_num, mercado, t
         # OJO signo: "Detalles de logística" -> "Ventas en {mercado}" viene NEGATIVO en el RDOS (es
         # una salida en un ledger de inventario: Total disponible − Ventas − Exportado = Inventario
         # final) -- verificado cruzando contra 'Informe de mercado, {mercado}' -> 'Ventas, miles
-        # unidades' (positivo, mismo valor absoluto: 667,398 en ambos para CADIZ/Combustión/EE.UU.
+        # unidades' (positivo, mismo valor absoluto: 667,398 en ambos para ULTI/Tec 1/EE.UU.
         # Ronda 1). Se usa directamente este segundo campo -- ya viene con el signo correcto y es el
         # mismo que usa el resto de la app (chart Demanda vs. Ventas de la sección Mercado).
         vol_real = _valor_real_grano(df_real, ronda_nombre, f"Informe de mercado, {mercado}", tech, "Ventas, miles unidades", empresa=team)
@@ -237,9 +237,9 @@ def variacion_precio_volumen_mix(datos):
     }
 
 
-def costo_unitario_area(df_real, df_proy, ronda_nombre, ronda_num, area, team="CADIZ"):
+def costo_unitario_area(df_real, df_proy, ronda_nombre, ronda_num, area, team="ULTI"):
     """Costo unitario de producción (propia y tercerizada), Plan vs. Real, por tecnología, en un
-    ÁREA de producción (EE.UU./China) -- insumo del desvío de costos de fabricación en Operaciones
+    ÁREA de producción (EE.UU./Asia) -- insumo del desvío de costos de fabricación en Operaciones
     (Adenda 12). Mismo grano (área × tecnología) en Plan y Real, en USD/u. absoluto en ambos lados --
     no hace falta ponderar por mix de origen. OJO alcance: esto es solo el costo de FABRICACIÓN
     (propia + contratada); transporte/aranceles y promoción se reportan por MERCADO de destino en el
@@ -256,9 +256,9 @@ def costo_unitario_area(df_real, df_proy, ronda_nombre, ronda_num, area, team="C
         prod_propia_real = _valor_real_grano(df_real, ronda_nombre, "Detalles de fabricación", "Producción interna, miles unidades", tech, subgrupo=area, empresa=team)
         prod_terc_real = _valor_real_grano(df_real, ronda_nombre, "Detalles de fabricación", "Producción contratada, miles unidades", tech, subgrupo=area, empresa=team)
         # Filtra por producción REAL (no por el costo Plan): el motor calcula un costo unitario Plan
-        # con la misma curva de costos para las 4 tecnologías aunque CADIZ no produzca ahí todavía
-        # (el costo "existe" en la fórmula, pero no es una tecnología en la que CADIZ compita) -- si
-        # se filtrara por cu_propia_plan!=0 quedarían Eléctrico/Hidrógeno mostrados por error.
+        # con la misma curva de costos para las 4 tecnologías aunque ULTI no produzca ahí todavía
+        # (el costo "existe" en la fórmula, pero no es una tecnología en la que ULTI compita) -- si
+        # se filtrara por cu_propia_plan!=0 quedarían Tec 3/Tec 4 mostrados por error.
         if not ((prod_propia_real or 0) or (prod_terc_real or 0)):
             continue
         out[tech] = {"cu_propia_plan": cu_propia_plan, "cu_propia_real": cu_propia_real,
@@ -267,13 +267,13 @@ def costo_unitario_area(df_real, df_proy, ronda_nombre, ronda_num, area, team="C
     return out
 
 
-def cuota_mercado_objetivo_vs_real(df_real, df_proy, ronda_nombre, ronda_num, mercado, team="CADIZ"):
+def cuota_mercado_objetivo_vs_real(df_real, df_proy, ronda_nombre, ronda_num, mercado, team="ULTI"):
     """Cuota de mercado por tecnología: Objetivo (Plan, decisión D1·DEMANDA) vs. Real, en la MISMA
     convención declarada por el propio input del Excel: "% del mercado regional TOTAL (no se
     multiplica por mix tecnológico)". OJO -- esto es DISTINTO del campo que el RDOS publica directo
     en 'Informe de mercado, {mercado}' -> Seccion='{mercado} cuotas de mercado, %' -> Metrica=
     tecnología: se verificó que ESE campo usa otra convención (Ventas del equipo en esa tecnología /
-    Σ Ventas de los 7 equipos EN ESA TECNOLOGÍA -- ej. Ronda 1 Combustión EE.UU.: 667,398/4.146,85 =
+    Σ Ventas de los 7 equipos EN ESA TECNOLOGÍA -- ej. Ronda 1 Tec 1 EE.UU.: 667,398/4.146,85 =
     16,09%, exacto). Compararlo directo contra el Objetivo sería mezclar dos definiciones distintas
     de "cuota" -- por eso el Real se reconstruye ACÁ con la misma convención que el Objetivo: Ventas
     reales de `team` en esa tecnología / tamaño total del mercado (Σ Ventas reales, los 7 equipos,
@@ -287,7 +287,7 @@ def cuota_mercado_objetivo_vs_real(df_real, df_proy, ronda_nombre, ronda_num, me
     tamano_total = sub_ventas["Valor"].sum()
     out = {}
     for tech in TECNOLOGIAS:
-        objetivo, _ = _valor_proyeccion(df_proy, ronda_num, {"metric": "Cuota de mercado objetivo CADIZ", "region": mercado, "tech": tech}, team)
+        objetivo, _ = _valor_proyeccion(df_proy, ronda_num, {"metric": "Cuota de mercado objetivo ULTI", "region": mercado, "tech": tech}, team)
         ventas_team = sub_ventas[(sub_ventas["Seccion"] == tech) & (sub_ventas["Empresa"] == team)]["Valor"].sum()
         real_cuota = (ventas_team / tamano_total) if tamano_total else None
         if not ((objetivo or 0) or ventas_team):
@@ -296,17 +296,17 @@ def cuota_mercado_objetivo_vs_real(df_real, df_proy, ronda_nombre, ronda_num, me
     return out
 
 
-def demanda_estimada_vs_real(df_real, df_proy, ronda_nombre, ronda_num, mercado, team="CADIZ"):
-    """Demanda Estimada (Plan, D1c·DEMANDA -- lo que CADIZ pronosticó que el mercado le iba a
+def demanda_estimada_vs_real(df_real, df_proy, ronda_nombre, ronda_num, mercado, team="ULTI"):
+    """Demanda Estimada (Plan, D1c·DEMANDA -- lo que ULTI pronosticó que el mercado le iba a
     demandar) vs. Demanda Real (RDOS), por tecnología, en un mercado -- desvío PURO de pronóstico de
     demanda, antes de cualquier corte por disponibilidad/capacidad (eso es 'Ventas', que ya se
     compara aparte en precio_volumen_mercado / fila3_resultados_ingresos). Mismo grano y misma
-    convención de unidades ('Demanda estimada CADIZ (unidades)' en DATA_EXPORT, ya absoluto -- 'u.';
+    convención de unidades ('Demanda estimada ULTI (unidades)' en DATA_EXPORT, ya absoluto -- 'u.';
     'Demanda, miles unidades' del RDOS real, x1000 para llevarlo a unidades absolutas, mismo criterio
     que ya usa metric_crosswalk.CROSSWALK_MERCADO vía _to_absoluto(tipo='unidades'))."""
     out = {}
     for tech in TECNOLOGIAS:
-        plan, _ = _valor_proyeccion(df_proy, ronda_num, {"metric": "Demanda estimada CADIZ (unidades)", "region": mercado, "tech": tech}, team)
+        plan, _ = _valor_proyeccion(df_proy, ronda_num, {"metric": "Demanda estimada ULTI (unidades)", "region": mercado, "tech": tech}, team)
         real = _valor_real_grano(df_real, ronda_nombre, f"Informe de mercado, {mercado}", tech, "Demanda, miles unidades", empresa=team)
         real = real * 1000.0 if real is not None else None
         if not ((plan or 0) or (real or 0)):
@@ -315,7 +315,7 @@ def demanda_estimada_vs_real(df_real, df_proy, ronda_nombre, ronda_num, mercado,
     return out
 
 
-def flujo_caja_plan_real_global(df_real, df_proy, ronda_nombre, ronda_num, team="CADIZ"):
+def flujo_caja_plan_real_global(df_real, df_proy, ronda_nombre, ronda_num, team="ULTI"):
     """Composición del Flujo de Caja (CFO/CFI/CFF), Plan vs. Real, a nivel Global -- insumo del
     gráfico de Composición de Flujo de Caja en la Comparativa Plan vs. Real de Finanzas (Adenda 12).
 
@@ -326,7 +326,7 @@ def flujo_caja_plan_real_global(df_real, df_proy, ronda_nombre, ronda_num, team=
 
     Real: CESIM NO publica un único "Estado de flujo de efectivo, Global" en el RDOS -- lo publica en
     3 Estados separados: 'Flujo de efectivo de casa matriz, miles USD' (HQ + operación en EE.UU.) +
-    'Estado de flujo de efectivo, miles USD, China' + '...Europa'. Se reconstruye sumando el
+    'Estado de flujo de efectivo, miles USD, Asia' + '...Europa'. Se reconstruye sumando el
     CFO/CFI/CFF de los tres. El x1000 de "miles USD" (Adenda 27) ya NO se aplica acá a mano -- Adenda
     32: se centralizó en `cesim_parser._corregir_escala_monetaria()`, así que `df_real` ya llega con
     'Valor' en USD absoluto para estos 3 Estados (aplicarlo de nuevo acá escalaría 1000x de más).
@@ -341,7 +341,7 @@ def flujo_caja_plan_real_global(df_real, df_proy, ronda_nombre, ronda_num, team=
         plan[clave] = val
 
     ESTADOS_CF = ["Flujo de efectivo de casa matriz, miles USD",
-                  "Estado de flujo de efectivo, miles USD, China",
+                  "Estado de flujo de efectivo, miles USD, Asia",
                   "Estado de flujo de efectivo, miles USD, Europa"]
     real = {"cfo": 0.0, "cfi": 0.0, "cff": 0.0}
     encontrado = False
@@ -392,7 +392,7 @@ def _to_absoluto(valor, spec_tipo, fuente):
         # Adenda 26 (bug reportado: "Comparativa Plan vs. Real" de Mercado se rompió -- Real de
         # Demanda estimada salía ~1000x menor que el Proyectado). La métrica real detrás de este tipo
         # ('Demanda, miles unidades', Estado 'Informe de mercado, {país}') SÍ está en miles de unidades
-        # de verdad -- confirmado: CADIZ Ronda 1, EE.UU., Combustión = 667.398 sin este x1000, un
+        # de verdad -- confirmado: ULTI Ronda 1, EE.UU., Tec 1 = 667.398 sin este x1000, un
         # mercado automotor de ~667 unidades totales no es plausible; con el x1000 (667,398) queda en
         # el mismo orden de magnitud que el Proyectado de Ronda 2 (~1,041,456 unidades).
         return valor * 1000.0
@@ -400,7 +400,7 @@ def _to_absoluto(valor, spec_tipo, fuente):
 
 
 def ronda_a_num(ronda_nombre):
-    """CADIZ_Gestion_v2.xlsx proyecta únicamente rondas OFICIALES ('Ronda N', round=N en
+    """ULTI_Gestion_v2.xlsx proyecta únicamente rondas OFICIALES ('Ronda N', round=N en
     DATA_EXPORT) -- una ronda de Práctica no tiene equivalente ahí, así que para esas
     devuelve None a propósito (fuerza 'sin_proyeccion'/'sin_datos' en calcular_gaps, y el panel cae
     al gráfico de evolución en vez de mostrar un gap inexistente). Se parsea del NOMBRE de la ronda
@@ -412,7 +412,7 @@ def ronda_a_num(ronda_nombre):
     return int(m.group(1)) if m else None
 
 
-def calcular_gaps(df_real, df_proy, ronda_nombre, ronda_num, team="CADIZ", crosswalk=None):
+def calcular_gaps(df_real, df_proy, ronda_nombre, ronda_num, team="ULTI", crosswalk=None):
     """Devuelve {clave_kpi: {label, tipo, gap_favorable, proyectado, proyectado_status, real,
     gap_abs, gap_pct, estado}} para cada entrada del crosswalk.
 

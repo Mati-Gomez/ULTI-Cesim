@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Construye /home/claude/cadiz_gestion/CADIZ_Gestion_v1.xlsx desde cero.
-Ver Informe_Construccion_CADIZ_Gestion_v1.md y CADIZ_Gestion_v1_README.md para el detalle de
+Construye /home/claude/cadiz_gestion/ULTI_Gestion_v1.xlsx desde cero.
+Ver Informe_Construccion_ULTI_Gestion_v1.md y ULTI_Gestion_v1_README.md para el detalle de
 arquitectura, simplificaciones y supuestos. Este script NUNCA lee ni escribe MOTOR_VALIDADO_R2.xlsx
 (fuente de verdad de solo lectura) -- los valores semilla (historicos R0/R1, catalogo D1-D9, Escenario
 A R2) se copian a mano abajo, ya extraidos y verificados por lectura separada del motor viejo.
@@ -58,14 +58,14 @@ def _classify_fuente(tipo, nota):
         short = "Ver comentario"
     return short, nota
 
-PAISES = ["EE.UU.", "China", "Europa"]
-AREAS = ["EE.UU.", "China"]          # areas productoras
-MERCADOS = ["EE.UU.", "China", "Europa"]
-TECNOLOGIAS = ["Combustión", "Híbrido", "Eléctrico", "Hidrógeno"]
-TECH_ACTIVAS = ["Combustión", "Híbrido"]   # unicas comercializadas por CADIZ a R0-R2
+PAISES = ["EE.UU.", "Asia", "Europa"]
+AREAS = ["EE.UU.", "Asia"]          # areas productoras
+MERCADOS = ["EE.UU.", "Asia", "Europa"]
+TECNOLOGIAS = ["Tec 1", "Tec 2", "Tec 3", "Tec 4"]
+TECH_ACTIVAS = ["Tec 1", "Tec 2"]   # unicas comercializadas por ULTI a R0-R2
 RONDAS = list(range(0, 13))
 ENFOQUES_MKT = ["Equilibrado", "Precio bajo", "Características", "Sostenibilidad", "Marca"]
-MONEDA_MERCADO = {"EE.UU.": "USD", "China": "RMB", "Europa": "EUR"}
+MONEDA_MERCADO = {"EE.UU.": "USD", "Asia": "RMB", "Europa": "EUR"}
 
 # Costo unitario de producción tercerizada (CONDICIÓN DE RONDA publicada por CESIM), por
 # área/tecnología. Única fuente de verdad -- usada tanto por build_inputs() (celda de 01_INPUTS)
@@ -73,10 +73,10 @@ MONEDA_MERCADO = {"EE.UU.": "USD", "China": "RMB", "Europa": "EUR"}
 # tercerizadas reales, Sección C). R3+: "NO DETERMINADO / PENDIENTE DE CARGA" -- el manual (cap. 5)
 # confirma que varía según volumen y se revela recién en la pantalla de decisión, no se publica de
 # antemano.
-COSTO_TERC_R0 = {"EE.UU.": {"Combustión": 11425.6408888889}, "China": {"Combustión": 10264.4712345679}}
-COSTO_TERC_R1 = {"EE.UU.": {"Combustión": 11142.1602938292, "Híbrido": 17630.5229121633},
-                  "China": {"Combustión": 10358.738390622, "Híbrido": 16285.8239718646}}
-COSTO_TERC_R2 = {"China": {"Combustión": 10106.74, "Híbrido": 15649.15}}
+COSTO_TERC_R0 = {"EE.UU.": {"Tec 1": 11425.6408888889}, "Asia": {"Tec 1": 10264.4712345679}}
+COSTO_TERC_R1 = {"EE.UU.": {"Tec 1": 11142.1602938292, "Tec 2": 17630.5229121633},
+                  "Asia": {"Tec 1": 10358.738390622, "Tec 2": 16285.8239718646}}
+COSTO_TERC_R2 = {"Asia": {"Tec 1": 10106.74, "Tec 2": 15649.15}}
 COSTO_TERC_POR_RONDA = {0: COSTO_TERC_R0, 1: COSTO_TERC_R1, 2: COSTO_TERC_R2}
 
 INPUTS_SHEET = "01_INPUTS"
@@ -89,7 +89,7 @@ ENGINE_PROD_SHEET = "_ENGINE_PRODUCCION"
 ENGINE_FIN_SHEET = "_ENGINE_FINANCIERO"
 DATA_EXPORT_SHEET = "DATA_EXPORT"
 
-OUT_PATH = "/home/claude/cadiz_gestion/CADIZ_Gestion_v3.xlsx"
+OUT_PATH = "/home/claude/cadiz_gestion/ULTI_Gestion_v3.xlsx"
 
 # Fase 3: los históricos por país (P&L/Balance/CF) y el histórico tidy de 7 equipos ya NO se leen
 # de JSON pre-parseados ni de MOTOR_VALIDADO_R2.xlsx -- se parsean al vuelo desde los RDOS de cada
@@ -102,7 +102,7 @@ from rdos_parser import parse_rdos_workbook, detectar_ronda_desde_nombre
 
 
 def extract_hist_pais(rdos_files):
-    """RDOS por país (EE.UU./China/Europa) -- P&L, Balance y Flujo de Fondos reales, en USD.
+    """RDOS por país (EE.UU./Asia/Europa) -- P&L, Balance y Flujo de Fondos reales, en USD.
     rdos_files: dict {ronda_int: path_o_fileobj_del_RDOS} para TODAS las rondas ya jugadas (antes
     solo R0/R1 desde ronda0.json/ronda1.json; ahora cualquier ronda, parseada al vuelo con
     rdos_parser.parse_rdos_workbook() -- una sola fuente/lógica de escala para todas las rondas,
@@ -112,7 +112,7 @@ def extract_hist_pais(rdos_files):
     histórico real, no supuesto ni lógica propia."""
     out = {rn: {} for rn in rdos_files}
     cf_labels = {"Flujo de efectivo de casa matriz, miles USD": "EE.UU.",
-                 "Estado de flujo de efectivo, miles USD, China": "China",
+                 "Estado de flujo de efectivo, miles USD, Asia": "Asia",
                  "Estado de flujo de efectivo, miles USD, Europa": "Europa"}
     for rn, f in rdos_files.items():
         rows = parse_rdos_workbook(f)
@@ -125,43 +125,43 @@ def extract_hist_pais(rdos_files):
                 continue
             for pais in PAISES + ["Global"]:
                 if sec == f"Cuenta de resultados, miles USD, {pais}":
-                    out[rn].setdefault(pais, {}).setdefault("pl", {})[lbl] = row["scaled"].get("CADIZ")
+                    out[rn].setdefault(pais, {}).setdefault("pl", {})[lbl] = row["scaled"].get("ULTI")
                 if sec == f"Hoja de Balance, miles USD, {pais}":
-                    out[rn].setdefault(pais, {}).setdefault("bal", {})[lbl] = row["scaled"].get("CADIZ")
+                    out[rn].setdefault(pais, {}).setdefault("bal", {})[lbl] = row["scaled"].get("ULTI")
             if sec in cf_labels:
                 lbl_out = lbl
                 if lbl == "Total" and cf_seccion_actual.get(sec):
                     lbl_out = f"Total ({cf_seccion_actual[sec]})"
-                out[rn].setdefault(cf_labels[sec], {}).setdefault("cf", {})[lbl_out] = row["scaled"].get("CADIZ")
+                out[rn].setdefault(cf_labels[sec], {}).setdefault("cf", {})[lbl_out] = row["scaled"].get("ULTI")
             # DATO HISTÓRICO REAL (verificado, ver Informe Fase 4): "Acciones en circulación al final
             # de la ronda, m acciones" -- CESIM la publica dentro de la sección de flujo de efectivo de
             # Europa (quirk del propio RDOS, es un dato GLOBAL de casa matriz, no de ese país) y con la
             # unidad abreviada "m acciones" (miles de acciones) en vez de "miles unidades" -- rdos_parser
             # NO reconoce esa abreviatura (_MILES_RE exige la palabra completa "miles"), así que esta
             # fila llega en "values" (crudo, sin escalar) y hace falta el x1000 a mano acá. Verificado
-            # contra R0-R3: da 1.625.000.000 acciones en las 4 rondas (CADIZ no emitió/recompró todavía),
+            # contra R0-R3: da 1.625.000.000 acciones en las 4 rondas (ULTI no emitió/recompró todavía),
             # consistente con el valor que antes estaba hardcodeado como "DATO HISTÓRICO REAL" para R0/R1.
             if sec == "Estado de flujo de efectivo, miles USD, Europa" and lbl == "Acciones en circulación al final de la ronda, m acciones":
-                v_nacc = row["values"].get("CADIZ")
+                v_nacc = row["values"].get("ULTI")
                 if isinstance(v_nacc, (int, float)):
                     out[rn]["_nacc"] = v_nacc * 1000
     return out
 
 
 def extract_mercado_real(rdos_files):
-    """Tamaño de mercado total y Demanda estimada CADIZ, por mercado/tecnología, para CUALQUIER
+    """Tamaño de mercado total y Demanda estimada ULTI, por mercado/tecnología, para CUALQUIER
     ronda con RDOS (reemplaza los diccionarios tam_hist/dem_real de _ENGINE_MERCADO, que solo
     cubrían R0/R1 a mano). Dato histórico real, no supuesto ni lógica propia.
 
     CORRECCIÓN (auditoría R3, hallazgo verificado a la unidad contra RDOS R2): la versión anterior
-    calculaba Tamaño de mercado = Ventas propias de CADIZ / Cuota propia de CADIZ -- que es
-    IDÉNTICO algebraicamente a Σ Ventas de los 7 equipos (la cuota de CADIZ ya es, por
-    construcción del propio RDOS, Ventas_CADIZ / Ventas_totales). Eso solo coincide con el
+    calculaba Tamaño de mercado = Ventas propias de ULTI / Cuota propia de ULTI -- que es
+    IDÉNTICO algebraicamente a Σ Ventas de los 7 equipos (la cuota de ULTI ya es, por
+    construcción del propio RDOS, Ventas_ULTI / Ventas_totales). Eso solo coincide con el
     Tamaño de mercado real cuando NINGÚN equipo se queda sin stock. En Ronda 2 hubo demanda
-    insatisfecha real en varios equipos (ej. FOCUS: pidió 353.469 u. de Híbrido en EE.UU. y solo
+    insatisfecha real en varios equipos (ej. FOCUS: pidió 353.469 u. de Tec 2 en EE.UU. y solo
     vendió 180.038 -- RDOS R2, 'Informe de mercado, EE.UU.'), así que Σ Ventas < Σ Demanda, y el
     Tamaño de mercado derivado por el método viejo quedó sistemáticamente por debajo del real
-    (verificado: EE.UU. 4.906.731 vs. 5.101.785 reales, China 3.580.597 vs. 4.069.664, Europa
+    (verificado: EE.UU. 4.906.731 vs. 5.101.785 reales, Asia 3.580.597 vs. 4.069.664, Europa
     6.209.595 vs. 6.237.256 -- coincide a la unidad con Σ Demanda de los 7 equipos). En R0/R1 no
     hubo demanda insatisfecha, así que las dos fórmulas daban el mismo número por casualidad --
     de ahí que la verificación anterior ("0 diferencia a 10 decimales") no detectara el error: no
@@ -170,8 +170,8 @@ def extract_mercado_real(rdos_files):
     tam[mercado][ronda] = Σ("Demanda, miles unidades" x1000, TODOS los equipos, todas las
         tecnologías, sección "Informe de mercado, {mercado}") -- REGLA CESIM VERIFICADA (Tamaño de
         mercado = demanda total de la industria, no ventas efectivas).
-    dem[(mercado, tecnologia)][ronda] = "Demanda, miles unidades" x1000 de CADIZ, dentro del bloque
-        de esa tecnología en "Informe de mercado, {mercado}" -- 0.0 si CADIZ no tiene fila para esa
+    dem[(mercado, tecnologia)][ronda] = "Demanda, miles unidades" x1000 de ULTI, dentro del bloque
+        de esa tecnología en "Informe de mercado, {mercado}" -- 0.0 si ULTI no tiene fila para esa
         tecnología (no se inventa un valor). Sin cambios respecto de la versión anterior.
     """
     tam, dem_out = {}, {}
@@ -188,8 +188,8 @@ def extract_mercado_real(rdos_files):
                 if typ == "subheader" and lbl in TECNOLOGIAS:
                     current_tech = lbl
                 elif typ == "data" and lbl == "Demanda, miles unidades" and current_tech:
-                    demanda_por_mercado_tech[(current_mercado, current_tech)] = row["scaled"].get("CADIZ")
-                    # Tamaño de mercado = Σ Demanda de TODOS los equipos (no solo CADIZ) -- ver
+                    demanda_por_mercado_tech[(current_mercado, current_tech)] = row["scaled"].get("ULTI")
+                    # Tamaño de mercado = Σ Demanda de TODOS los equipos (no solo ULTI) -- ver
                     # docstring. row["scaled"] es {equipo: valor}, ya escalado x1000.
                     for v in row["scaled"].values():
                         if isinstance(v, (int, float)):
@@ -208,14 +208,14 @@ _SECTION_IS_TOP_RE = __import__("re").compile(r"miles USD|Informe de|Indicadores
 def extract_inventario_real(rdos_files):
     """Inventario inicial/final (unidades) y composición de origen (producción propia vs.
     tercerizada) del inventario final, por área/tecnología, para CUALQUIER ronda con RDOS. Lee la
-    sección 'Detalles de logística' del RDOS (CADIZ únicamente).
+    sección 'Detalles de logística' del RDOS (ULTI únicamente).
 
     Auditoría R3 (hallazgo verificado a la unidad contra RDOS R2): antes de esta función,
     build_engine_produccion_part1() calculaba el inventario de CUALQUIER ronda >=2 con su propio
-    FIFO simplificado (solo producción propia+tercerizada de CADIZ, sin importaciones/exportaciones
-    entre países) -- eso inventaba un reparto EE.UU./China del inventario final que no correspondía
-    al real (verificado: el motor daba 139.641 u. en EE.UU. / 84.880 u. en China para el stock
-    inicial de R3, cuando el RDOS de R2 confirma 0 u. en EE.UU. / 224.321 u. en China, 100%). Esta
+    FIFO simplificado (solo producción propia+tercerizada de ULTI, sin importaciones/exportaciones
+    entre países) -- eso inventaba un reparto EE.UU./Asia del inventario final que no correspondía
+    al real (verificado: el motor daba 139.641 u. en EE.UU. / 84.880 u. en Asia para el stock
+    inicial de R3, cuando el RDOS de R2 confirma 0 u. en EE.UU. / 224.321 u. en Asia, 100%). Esta
     función reemplaza esa inferencia por el dato real del RDOS.
 
     out[(area,tech)][ronda] = dict con:
@@ -261,7 +261,7 @@ def extract_inventario_real(rdos_files):
                     current_area = base_lbl
                 continue
             if typ == "data" and current_tech and current_area in AREAS:
-                v = row["scaled"].get("CADIZ")
+                v = row["scaled"].get("ULTI")
                 if not isinstance(v, (int, float)):
                     continue
                 key = (current_area, current_tech)
@@ -400,7 +400,7 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
     S.style_title_row(ws, 1, "01_INPUTS — Única interfaz de carga manual: Identificación, Condiciones de Ronda y Decisiones D1–D8", ncols)
     ws.row_dimensions[1].height = 26
     ws.cell(row=2, column=1,
-            value=("Azul = celda editable (decisión CADIZ o condición de ronda publicada por CESIM). Negro = fórmula de arrastre (edítese solo si CESIM publica un valor nuevo). "
+            value=("Azul = celda editable (decisión ULTI o condición de ronda publicada por CESIM). Negro = fórmula de arrastre (edítese solo si CESIM publica un valor nuevo). "
                    "Gris = dato histórico real (Ronda 0/1, no editar). Para agregar una ronda nueva: completar la columna de esa ronda; el resto de las hojas ya está preparado hasta la Ronda 12."))
     ws.cell(row=2, column=1).font = S.f_normal(9, italic=True, color=S.COLOR_HIST)
     ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=ncols)
@@ -433,7 +433,7 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
         short_fuente, full_note = _classify_fuente(tipo, nota)
         c = S.apply_cell(ws, rr, 6, value=short_fuente, kind="calculo", align=S.ALIGN_LEFT, size=8, italic=True)
         if full_note:
-            cm = Comment(full_note, "CADIZ Gestión v1.1")
+            cm = Comment(full_note, "ULTI Gestión v1.1")
             cm.width, cm.height = 340, 180
             c.comment = cm
         r[0] += 1
@@ -460,10 +460,10 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
 
     def decision_row(row, rn, key, default_new=None, numfmt=None, align=S.ALIGN_RIGHT, size=9, italic=False):
         """[Fix 1, rescate/bloqueo de decisiones históricas] Escribe la celda de ronda `rn` de una
-        fila de DECISIÓN CADIZ, respetando la frontera dinámica REAL/PLAN (rondas_reales, Fase 4):
+        fila de DECISIÓN ULTI, respetando la frontera dinámica REAL/PLAN (rondas_reales, Fase 4):
         - Si `rn` YA es histórica (rn in rondas_reales, es decir ya tiene RDOS oficial cargado): se
           restaura el valor REALMENTE decidido en su momento -- rescatado del
-          Cadiz_proyeccion_R{N}.xlsx anterior vía leer_decisiones_historicas() -- y la celda queda
+          Ulti_proyeccion_R{N}.xlsx anterior vía leer_decisiones_historicas() -- y la celda queda
           con estilo 'historico' (gris, bloqueada visualmente, mismo tratamiento que R0/R1). Si no
           hay nada rescatado para esa ronda (bootstrap sin archivo previo, o primera vez que esa
           ronda se genera), cae a `default_new` como fallback -- típicamente el valor bootstrap
@@ -514,9 +514,9 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
 
     # ---------------------------------------------------------------------------------
     # SECCIÓN [SUPUESTO PROPIO] · MATRIZ DE SENSIBILIDAD (Fase 2, cambio 4) -- herramienta de
-    # planificación propia del equipo CADIZ, NO es una regla CESIM. Un único "Escenario Activo"
+    # planificación propia del equipo ULTI, NO es una regla CESIM. Un único "Escenario Activo"
     # (celda escalar, no por ronda) multiplica el crecimiento de mercado (_ENGINE_MERCADO Sección
-    # A1) y la cuota efectiva de CADIZ (Sección A2) en TODAS las rondas simultáneamente. El
+    # A1) y la cuota efectiva de ULTI (Sección A2) en TODAS las rondas simultáneamente. El
     # escenario BASE tiene factores en 0% por diseño (no negociable, ver instrucción del usuario) --
     # con Escenario Activo=BASE, el multiplicador es exactamente 1 y Ronda 2 (Escenario A, ya
     # jugada) no cambia. Los valores Pesimista/Optimista son EDITABLES (celda azul) y sirven para
@@ -553,8 +553,8 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
     S.apply_cell(ws, row_sens_crec, SENS_COL_PESIM, value=-0.03, kind="input", numfmt=S.NUM_PCT1, align=S.ALIGN_RIGHT, size=9)   # Pesimista, col C (visible)
     S.apply_cell(ws, row_sens_crec, SENS_COL_OPTIM, value=0.03, kind="input", numfmt=S.NUM_PCT1, align=S.ALIGN_RIGHT, size=9)   # Optimista, col D (visible)
     S.apply_cell(ws, row_sens_crec, SENS_COL_BASE, value=0.00, kind="input", numfmt=S.NUM_PCT1, align=S.ALIGN_RIGHT, size=9)    # Base, col E (oculta, fija por diseño)
-    row_sens_comp = put("SENS · Supuesto propio", "Agresividad de la Competencia (recorte a la cuota efectiva de CADIZ)", "Pesimista / Base / Optimista", "%", "SUPUESTO PROPIO",
-                         "[SUPUESTO PROPIO] Herramienta de planificación del equipo, no una regla CESIM. Recorta la cuota efectiva de CADIZ en _ENGINE_MERCADO Sección A2: Cuota_efectiva = Cuota_objetivo × (1−Factor). BASE = 0% por diseño. Aplica ESTRICTAMENTE desde Ronda 3 en adelante -- R0/R1/R2 son histórico cerrado y no se recalculan con este mecanismo.")
+    row_sens_comp = put("SENS · Supuesto propio", "Agresividad de la Competencia (recorte a la cuota efectiva de ULTI)", "Pesimista / Base / Optimista", "%", "SUPUESTO PROPIO",
+                         "[SUPUESTO PROPIO] Herramienta de planificación del equipo, no una regla CESIM. Recorta la cuota efectiva de ULTI en _ENGINE_MERCADO Sección A2: Cuota_efectiva = Cuota_objetivo × (1−Factor). BASE = 0% por diseño. Aplica ESTRICTAMENTE desde Ronda 3 en adelante -- R0/R1/R2 son histórico cerrado y no se recalculan con este mecanismo.")
     S.apply_cell(ws, row_sens_comp, SENS_COL_PESIM, value=0.05, kind="input", numfmt=S.NUM_PCT1, align=S.ALIGN_RIGHT, size=9)
     S.apply_cell(ws, row_sens_comp, SENS_COL_OPTIM, value=0.00, kind="input", numfmt=S.NUM_PCT1, align=S.ALIGN_RIGHT, size=9)
     S.apply_cell(ws, row_sens_comp, SENS_COL_BASE, value=0.00, kind="input", numfmt=S.NUM_PCT1, align=S.ALIGN_RIGHT, size=9)
@@ -571,7 +571,7 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
     list_col_letter = get_column_letter(LIST_COL)
     sens_list_range = f"${list_col_letter}$2:${list_col_letter}$4"
 
-    row_sens_activo = put("SENS · Supuesto propio", "Escenario Activo", "-", "texto", "DECISIÓN CADIZ (planificación)",
+    row_sens_activo = put("SENS · Supuesto propio", "Escenario Activo", "-", "texto", "DECISIÓN ULTI (planificación)",
                            "[NO NEGOCIABLE] Aplica ESTRICTAMENTE desde Ronda 3 en adelante -- R0/R1/R2 son histórico cerrado, no se recalculan con este mecanismo pase lo que pase acá. Cambiar a PESIMISTA/OPTIMISTA para planificar R3+ (afecta TODAS las rondas activas por igual desde R3, es una celda única, no por ronda).")
     S.apply_cell(ws, row_sens_activo, SENS_COL_SCALAR, value="BASE", kind="input", align=S.ALIGN_CENTER, bold=True, size=9)
     dv_sens = DataValidation(type="list", formula1=sens_list_range, allow_blank=False)
@@ -597,7 +597,7 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
     row_ronda = put("A. Identificación", "Número de ronda", "-", "n°", "CÁLCULO")
     for rn in RONDAS:
         S.apply_cell(ws, row_ronda, 7 + rn, value=rn, kind="calculo", align=S.ALIGN_CENTER, bold=True, size=9)
-    row_escenario = put("A. Identificación", "Escenario", "-", "texto", "DECISIÓN CADIZ", "Nombre del escenario de decisión (p.ej. 'A'). n/a en rondas históricas.")
+    row_escenario = put("A. Identificación", "Escenario", "-", "texto", "DECISIÓN ULTI", "Nombre del escenario de decisión (p.ej. 'A'). n/a en rondas históricas.")
     key_escenario = last_key[0]
     # CORRECCIÓN histórica (previa a Fix 1): R2 pasaba a estilo azul "input" igual que el resto de
     # las rondas PLAN (R3-R12) -- el gris "histórico" quedaba reservado a R0/R1 para no sugerir que
@@ -611,11 +611,11 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
     S.apply_cell(ws, row_escenario, 7 + 1, value=esc_vals[1], kind="plain", align=S.ALIGN_CENTER, size=9, italic=True)
     for rn in range(2, 13):
         decision_row(row_escenario, rn, key_escenario, default_new=esc_vals.get(rn), align=S.ALIGN_CENTER, size=9)
-    row_estado = put("A. Identificación", "Estado", "-", "REAL/PLAN/SIM", "DECISIÓN CADIZ", "REAL = ronda ya jugada, con RDOS oficiales de CESIM cargados. PLAN = decisión cargada/enviada, aún sin RDOS oficiales confirmados. SIM = corrida de sensibilidad, no es el Plan oficial.")
+    row_estado = put("A. Identificación", "Estado", "-", "REAL/PLAN/SIM", "DECISIÓN ULTI", "REAL = ronda ya jugada, con RDOS oficiales de CESIM cargados. PLAN = decisión cargada/enviada, aún sin RDOS oficiales confirmados. SIM = corrida de sensibilidad, no es el Plan oficial.")
     # CORRECCIÓN (hotfix integración web, confirmado con el usuario): la versión anterior de este
     # script marcaba Estado(R2)="REAL" para señalar que la DECISIÓN de R2 (Escenario A) ya estaba
     # cerrada/enviada al simulador -- pero esa lectura de "REAL" mezclaba dos cosas distintas del
-    # proyecto: (2) Dato histórico real (RDOS publicados por CESIM) vs (4) Decisión/objetivo de CADIZ.
+    # proyecto: (2) Dato histórico real (RDOS publicados por CESIM) vs (4) Decisión/objetivo de ULTI.
     # Los valores de R2 en este archivo NUNCA fueron una migración de RDOS publicados -- siguen siendo
     # la PROYECCIÓN del modelo Fase 2 (validada contra MOTOR_VALIDADO_R2, ver Informe_V2.md). Al
     # integrar este workbook con el tablero web (control de gestión Proyectado vs. Real), un
@@ -631,7 +631,7 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
     # (n_next = max(rondas_reales)+1) arranca en "PLAN" como default de bootstrap; de ahí en más queda
     # en blanco (kind="input") para que el usuario la cargue o para que el mecanismo de rescate de
     # decisiones (leer_decisiones_previas/aplicar_overrides_inputs, ver generar_excel) la restaure
-    # desde el último Cadiz_proyeccion_R{N}.xlsx sin perder lo ya planificado a futuro.
+    # desde el último Ulti_proyeccion_R{N}.xlsx sin perder lo ya planificado a futuro.
     n_next_estado = (max(rondas_reales) + 1) if rondas_reales else 0
     estado_vals = {rn: "REAL" for rn in rondas_reales}
     # [Extensión Ronda 1, a pedido del usuario] Caso nuevo: proyectar VARIAS rondas PLAN a la vez (no
@@ -651,7 +651,7 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
     row_ronda_activa = put(
         "A. Identificación", "RONDA_ACTIVA (calculado)", "-", "VERDADERO/FALSO", "CÁLCULO",
         "SUPUESTO DE MODELO (Cambio 2, v1.1): VERDADERO si Estado de esta ronda ∈ {PLAN,SIM,REAL} Y el "
-        "input mínimo D1 'Cuota de mercado objetivo SOBRE LA TECNOLOGÍA' (EE.UU./Combustión) está cargado. R0 y R1 "
+        "input mínimo D1 'Cuota de mercado objetivo SOBRE LA TECNOLOGÍA' (EE.UU./Tec 1) está cargado. R0 y R1 "
         "quedan fijos en VERDADERO (históricas, no dependen de esta lógica). Usado por "
         "02_ESTADOS_PROYECTADOS, 03_RATIOS, 04_CONTROL_MODELO y DATA_EXPORT para no calcular/exportar "
         "una ronda con inputs vacíos. El valor se completa más abajo, una vez creada la fila de D1.")
@@ -661,16 +661,16 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
     #  dentro de la misma hoja, válida en Excel/OOXML sin restricción de orden físico de filas.)
 
     # ---------------------------------------------------------------------------------
-    # SECCIÓN B · CONDICIONES DE RONDA (publicadas por CESIM, no son decisiones de CADIZ)
+    # SECCIÓN B · CONDICIONES DE RONDA (publicadas por CESIM, no son decisiones de ULTI)
     # ---------------------------------------------------------------------------------
     section("SECCIÓN B · CONDICIONES DE RONDA (valores publicados por CESIM en 'Condiciones' de cada ronda — R3-R12 arrastran el último valor conocido, EDITABLE en cuanto se publique el real)")
 
     # -- Crecimiento de mercado esperado (D1, condición) --
     growth_hist = {}  # R0/R1: no publicado como condicion previa retroactiva
-    growth_r2 = {"EE.UU.": 0.05, "China": 0.085, "Europa": 0.03}
+    growth_r2 = {"EE.UU.": 0.05, "Asia": 0.085, "Europa": 0.03}
     for mercado in MERCADOS:
         row = put("B. Condiciones", "Crecimiento de mercado esperado (vs. ronda anterior)", mercado, "%", "CONDICIÓN DE RONDA",
-                   "Fuente: 'Contexto - Ronda 2.pdf' (China publicada como rango 8-9%; se usa 8,5% como punto medio, documentado).")
+                   "Fuente: 'Contexto - Ronda 2.pdf' (Asia publicada como rango 8-9%; se usa 8,5% como punto medio, documentado).")
         key = last_key[0]
         S.apply_cell(ws, row, 7 + 0, value="n/a (Ronda 0, sin ronda anterior)", kind="plain", align=S.ALIGN_CENTER, size=8, italic=True)
         # [Extensión Ronda 1 -- SUPUESTO PROPIO, NO una condición CESIM verificada] A diferencia del
@@ -692,15 +692,15 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
                 if rn in defaults_growth:
                     c = S.apply_cell(ws, row, 7 + rn, value=defaults_growth[rn], kind="input", numfmt=S.NUM_PCT1, align=S.ALIGN_RIGHT, size=9)
                     if rn == 1:
-                        cm = Comment(key_growth_comment, "CADIZ Gestión")
+                        cm = Comment(key_growth_comment, "ULTI Gestión")
                         cm.width, cm.height = 320, 150
                         c.comment = cm
                 else:
                     S.apply_cell(ws, row, 7 + rn, value=f"={col(rn-1)}{row}", kind="calculo", numfmt=S.NUM_PCT1, align=S.ALIGN_RIGHT, size=9)
 
     # -- Tasa de impuesto corporativo (D7, condición) --
-    tasa_hist = {"EE.UU.": {0: 0.22, 1: 0.25}, "China": {0: 0.25, 1: 0.28}, "Europa": {0: 0.21, 1: 0.23}}
-    tasa_r2 = {"EE.UU.": 0.22, "China": 0.25, "Europa": 0.21}
+    tasa_hist = {"EE.UU.": {0: 0.22, 1: 0.25}, "Asia": {0: 0.25, 1: 0.28}, "Europa": {0: 0.21, 1: 0.23}}
+    tasa_r2 = {"EE.UU.": 0.22, "Asia": 0.25, "Europa": 0.21}
     for pais in PAISES:
         row = put("B. Condiciones", "Tasa de impuesto corporativo", pais, "%", "CONDICIÓN DE RONDA", "DATO HISTÓRICO REAL R0/R1 (RDOS); R2 = Condición oficial ('Contexto - Ronda 2.pdf').")
         key = last_key[0]
@@ -719,10 +719,10 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
                     S.apply_cell(ws, row, 7 + rn, value=f"={col(rn-1)}{row}", kind="calculo", numfmt=S.NUM_PCT1, align=S.ALIGN_RIGHT, size=9)
 
     # -- FX --
-    fx_hist = {"China (RMB)": {1: 0.1620}, "Europa (EUR)": {1: 1.1460}}
-    fx_r2 = {"China (RMB)": 0.1507, "Europa (EUR)": 1.1126}
+    fx_hist = {"Asia (RMB)": {1: 0.1620}, "Europa (EUR)": {1: 1.1460}}
+    fx_r2 = {"Asia (RMB)": 0.1507, "Europa (EUR)": 1.1126}
     row_fx = {}
-    for dim in ("China (RMB)", "Europa (EUR)"):
+    for dim in ("Asia (RMB)", "Europa (EUR)"):
         row = put("B. Condiciones", "Tipo de cambio (USD por 1 unidad de moneda local)", dim, "USD/u.moneda", "CONDICIÓN DE RONDA")
         key = last_key[0]
         row_fx[dim] = row
@@ -763,8 +763,8 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
             else:
                 S.apply_cell(ws, row_tlp, 7 + rn, value=f"={col(rn-1)}{row_tlp}", kind="calculo", numfmt=S.NUM_PCT1, align=S.ALIGN_RIGHT, size=9)
 
-    tasa_cp_hist = {"EE.UU.": 0.15, "China": 0.10, "Europa": 0.085}
-    tasa_cp_r2 = {"EE.UU.": 0.10, "China": 0.07, "Europa": 0.055}
+    tasa_cp_hist = {"EE.UU.": 0.15, "Asia": 0.10, "Europa": 0.085}
+    tasa_cp_r2 = {"EE.UU.": 0.10, "Asia": 0.07, "Europa": 0.055}
     row_tcp = {}
     for pais in PAISES:
         row = put("B. Condiciones", "Tasa de interés — deuda a corto plazo", pais, "%/ronda", "CONDICIÓN DE RONDA")
@@ -780,8 +780,8 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
                 else:
                     S.apply_cell(ws, row, 7 + rn, value=f"={col(rn-1)}{row}", kind="calculo", numfmt=S.NUM_PCT1, align=S.ALIGN_RIGHT, size=9)
 
-    tasa_ef_hist = {"EE.UU.": 0.06, "China": 0.065, "Europa": 0.055}
-    tasa_ef_r2 = {"EE.UU.": 0.04, "China": 0.055, "Europa": 0.03}
+    tasa_ef_hist = {"EE.UU.": 0.06, "Asia": 0.065, "Europa": 0.055}
+    tasa_ef_r2 = {"EE.UU.": 0.04, "Asia": 0.055, "Europa": 0.03}
     row_tef = {}
     for pais in PAISES:
         row = put("B. Condiciones", "Tasa de interés sobre efectivo", pais, "%/ronda", "CONDICIÓN DE RONDA")
@@ -798,7 +798,7 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
                     S.apply_cell(ws, row, 7 + rn, value=f"={col(rn-1)}{row}", kind="calculo", numfmt=S.NUM_PCT1, align=S.ALIGN_RIGHT, size=9)
 
     # -- Costo de la característica --
-    car_hist = {"EE.UU.": 700.0, "China": 650.0, "Europa": 750.0}
+    car_hist = {"EE.UU.": 700.0, "Asia": 650.0, "Europa": 750.0}
     row_car = {}
     for pais in PAISES:
         row = put("B. Condiciones", "Costo de la característica", pais, "USD/u.", "CONDICIÓN DE RONDA", "Verificado exacto contra RDOS R1 (desglose de margen por tecnología). Es un costo VARIABLE de OFRECER la característica (se carga al costo de venta por unidad vendida, manual cap. 8) -- distinto de generarla o adquirirla (ver las 2 filas siguientes).")
@@ -825,13 +825,13 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
     row_costo_tec_nueva = {}
     for tech in TECNOLOGIAS:
         row = put("B. Condiciones", "Costo de adquirir tecnología nueva", tech, "USD", "CONDICIÓN DE RONDA",
-                   "No confirmado contra CESIM todavía (ver Parámetros de Estimaciones). Aplica solo si CADIZ "
-                   "incorpora esta tecnología (Combustión/Híbrido ya están habilitadas).")
+                   "No confirmado contra CESIM todavía (ver Parámetros de Estimaciones). Aplica solo si ULTI "
+                   "incorpora esta tecnología (Tec 1/Tec 2 ya están habilitadas).")
         key = last_key[0]
         row_costo_tec_nueva[tech] = row
         if tech in TECH_ACTIVAS:
             for rn in RONDAS:
-                S.apply_cell(ws, row, 7 + rn, value="n/a (ya habilitada para CADIZ)", kind="plain", align=S.ALIGN_CENTER, size=8, italic=True)
+                S.apply_cell(ws, row, 7 + rn, value="n/a (ya habilitada para ULTI)", kind="plain", align=S.ALIGN_CENTER, size=8, italic=True)
         else:
             S.apply_cell(ws, row, 7 + 0, value="n/a (no verificado)", kind="plain", align=S.ALIGN_CENTER, size=8, italic=True)
             S.apply_cell(ws, row, 7 + 1, value="n/a (no verificado)", kind="plain", align=S.ALIGN_CENTER, size=8, italic=True)
@@ -855,8 +855,8 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
                 S.apply_cell(ws, row, 7 + rn, value=None, kind="input", numfmt=S.NUM_MONEY, align=S.ALIGN_RIGHT, size=9)
 
     # -- Administración: fijo / planta / % --
-    admin_fijo_hist = {"EE.UU.": 35_000_000.0, "China": 71_000_000.0, "Europa": 20_000_000.0}
-    admin_fijo_r2 = {"EE.UU.": 35_000_000.0, "China": 74_000_000.0, "Europa": 20_000_000.0}
+    admin_fijo_hist = {"EE.UU.": 35_000_000.0, "Asia": 71_000_000.0, "Europa": 20_000_000.0}
+    admin_fijo_r2 = {"EE.UU.": 35_000_000.0, "Asia": 74_000_000.0, "Europa": 20_000_000.0}
     row_admin_fijo = {}
     for pais in PAISES:
         row = put("B. Condiciones", "Administración — componente fijo", pais, "USD", "CONDICIÓN DE RONDA",
@@ -873,8 +873,8 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
                 else:
                     S.apply_cell(ws, row, 7 + rn, value=f"={col(rn-1)}{row}", kind="calculo", numfmt=S.NUM_MONEY, align=S.ALIGN_RIGHT, size=9)
 
-    admin_planta_hist = {"EE.UU.": 4_000_000.0, "China": 12_000_000.0}
-    admin_planta_r2 = {"EE.UU.": 4_000_000.0, "China": 13_000_000.0}
+    admin_planta_hist = {"EE.UU.": 4_000_000.0, "Asia": 12_000_000.0}
+    admin_planta_r2 = {"EE.UU.": 4_000_000.0, "Asia": 13_000_000.0}
     row_admin_planta = {}
     for area in AREAS:
         row = put("B. Condiciones", "Administración — componente por planta (aplicado linealmente, ver ALERTA)", area, "USD/fábrica", "CONDICIÓN DE RONDA")
@@ -974,9 +974,9 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
                 S.apply_cell(ws, row_accion, 7 + rn, value=f"={col(rn-1)}{row_accion}", kind="calculo", numfmt='0.00', align=S.ALIGN_RIGHT, size=9)
 
     # -- Transporte / aranceles --
-    PARES = [("EE.UU.", "China"), ("EE.UU.", "Europa"), ("China", "EE.UU."), ("China", "Europa")]
-    transp_hist = {("EE.UU.", "China"): 550.0, ("EE.UU.", "Europa"): 300.0, ("China", "EE.UU."): 450.0, ("China", "Europa"): 400.0}
-    transp_r2 = {("EE.UU.", "China"): 350.0, ("EE.UU.", "Europa"): 200.0, ("China", "EE.UU."): 300.0, ("China", "Europa"): 250.0}
+    PARES = [("EE.UU.", "Asia"), ("EE.UU.", "Europa"), ("Asia", "EE.UU."), ("Asia", "Europa")]
+    transp_hist = {("EE.UU.", "Asia"): 550.0, ("EE.UU.", "Europa"): 300.0, ("Asia", "EE.UU."): 450.0, ("Asia", "Europa"): 400.0}
+    transp_r2 = {("EE.UU.", "Asia"): 350.0, ("EE.UU.", "Europa"): 200.0, ("Asia", "EE.UU."): 300.0, ("Asia", "Europa"): 250.0}
     row_transp = {}
     for par in PARES:
         dim = f"{par[0]} → {par[1]}"
@@ -1009,8 +1009,8 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
                 else:
                     S.apply_cell(ws, row, 7 + rn, value=f"={col(rn-1)}{row}", kind="calculo", numfmt=S.NUM_PRICE, align=S.ALIGN_RIGHT, size=9)
 
-    arancel_adval_hist = {("EE.UU.", "China"): 0.30, ("EE.UU.", "Europa"): 0.20, ("China", "EE.UU."): 0.30, ("China", "Europa"): 0.20}
-    arancel_adval_r2 = {("EE.UU.", "China"): 0.20, ("EE.UU.", "Europa"): 0.10, ("China", "EE.UU."): 0.025, ("China", "Europa"): 0.10}
+    arancel_adval_hist = {("EE.UU.", "Asia"): 0.30, ("EE.UU.", "Europa"): 0.20, ("Asia", "EE.UU."): 0.30, ("Asia", "Europa"): 0.20}
+    arancel_adval_r2 = {("EE.UU.", "Asia"): 0.20, ("EE.UU.", "Europa"): 0.10, ("Asia", "EE.UU."): 0.025, ("Asia", "Europa"): 0.10}
     row_arancel_adval = {}
     for par in PARES:
         dim = f"{par[0]} → {par[1]}"
@@ -1029,8 +1029,8 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
                     S.apply_cell(ws, row, 7 + rn, value=f"={col(rn-1)}{row}", kind="calculo", numfmt=S.NUM_PCT1, align=S.ALIGN_RIGHT, size=9)
 
     # -- Costo de inversión / precio de venta por fábrica --
-    costo_fab_hist = {"EE.UU.": 1_207_500_000.0, "China": 1_057_500_000.0}
-    costo_fab_r2 = {"EE.UU.": 1_202_000_000.0, "China": 1_052_000_000.0}
+    costo_fab_hist = {"EE.UU.": 1_207_500_000.0, "Asia": 1_057_500_000.0}
+    costo_fab_r2 = {"EE.UU.": 1_202_000_000.0, "Asia": 1_052_000_000.0}
     row_costo_fab = {}
     for area in AREAS:
         row = put("B. Condiciones", "Costo de inversión por fábrica", area, "USD", "CONDICIÓN DE RONDA")
@@ -1090,7 +1090,7 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
     # con iref() como cualquier otra Condición de Ronda. Siguen en blanco hasta que el equipo cargue
     # la tasa: la nota de Fuente indica dónde confirmar el monto antes de tipearlo.
     row_ginv_fijo, row_ginv_var = {}, {}
-    for pais in ["EE.UU.", "China"]:
+    for pais in ["EE.UU.", "Asia"]:
         rowf = put("B. Condiciones", "Costos fijos de gestión de inventario", pais, "miles USD", "CONDICIÓN DE RONDA",
                     "Manual cap. 5.2 (promedio inventario apertura+cierre). Confirmar monto contra pantalla CESIM antes de cargar.")
         keyf = last_key[0]
@@ -1173,17 +1173,17 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
     # ---------------------------------------------------------------------------------
     # [ARQUITECTURA A PEDIDO EXPLÍCITO DEL EQUIPO] El manual CESIM (cap. 4.2) es taxativo: "el
     # porcentaje estimado [D1] se refiere a TODA el área del mercado, NO a la demanda de esa
-    # tecnología específica" -- es decir, el input D1 histórico ("Cuota de mercado objetivo CADIZ")
+    # tecnología específica" -- es decir, el input D1 histórico ("Cuota de mercado objetivo ULTI")
     # YA es % del mercado TOTAL, no % de la tecnología. Multiplicar ese valor por un Mix de Industria
     # adicional duplicaría/descontaría la demanda: es el mismo bug que la etapa anterior detectó y
     # revirtió (ver claude/Prueba_Operacional_R2_Escenario_A_v2.md: "la cuota ya viene expresada
     # como % del mercado regional total"). Para evitar reintroducirlo, el equipo definió una
     # arquitectura de 3 bloques que REDEFINE el input D1 en vez de multiplicarlo directamente:
     #   D1a) Mix de Industria (TAM)                              = % del TAM que representa cada tecnología.
-    #   D1b) Cuota de mercado objetivo SOBRE LA TECNOLOGÍA        = % que CADIZ apunta a capturar
-    #        (antes "Cuota de mercado objetivo CADIZ")              DENTRO del segmento de esa tecnología (NUEVA semántica).
+    #   D1b) Cuota de mercado objetivo SOBRE LA TECNOLOGÍA        = % que ULTI apunta a capturar
+    #        (antes "Cuota de mercado objetivo ULTI")              DENTRO del segmento de esa tecnología (NUEVA semántica).
     #   D1c) Cuota Resultante SOBRE EL TOTAL (Copiar a CESIM)     = D1a × D1b, fila a fila -- ÉSTA
-    #        es la que alimenta _ENGINE_MERCADO (Sección A2, Demanda estimada CADIZ) y reproduce la
+    #        es la que alimenta _ENGINE_MERCADO (Sección A2, Demanda estimada ULTI) y reproduce la
     #        semántica "% del mercado TOTAL" que exige el manual.
     # R0/R1: "n/a" en los tres bloques -- la demanda de esas rondas es histórico real hardcodeado
     # (Sección A2 de _ENGINE_MERCADO no lee este bloque para R0/R1). R2: Estado(R2)="PLAN" (decisión
@@ -1203,10 +1203,10 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
     # era texto "n/a" porque R1 siempre fue histórica fija y _ENGINE_MERCADO ni leía este bloque para
     # esa ronda. Se reconstruye con el MISMO método ya usado para Tamaño de mercado/Demanda (dato
     # histórico real derivado del RDOS, extract_mercado_real() -- NO es un supuesto nuevo):
-    #   Cuota Resultante SOBRE EL TOTAL (D1c) real de R1 = Demanda real de CADIZ en esa tecnología
+    #   Cuota Resultante SOBRE EL TOTAL (D1c) real de R1 = Demanda real de ULTI en esa tecnología
     #   (RDOS R1) / Tamaño de mercado total real de esa área (RDOS R1) -- exactamente lo que D1c
     #   representa por definición (Mix de Industria × Cuota sobre la Tecnología = participación de
-    #   CADIZ sobre el total). Si Ronda 1 no está entre los RDOS provistos (bootstrap sin ese
+    #   ULTI sobre el total). Si Ronda 1 no está entre los RDOS provistos (bootstrap sin ese
     #   archivo), cae a "n/d" explícito -- no se inventa un número.
     _tam_real_bi, _dem_real_bi = extract_mercado_real(rdos_files or {})
 
@@ -1220,16 +1220,16 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
     section("SECCIÓN C.D1a · DEMANDA — Mix de Industria (TAM) [SUPUESTO PROPIO — no es un input directo publicado por CESIM]")
     # Mix de Industria R1: DATO HISTÓRICO REAL, derivado de 'Informes de mercado' RDOS Ronda 1
     # (demanda de las 7 empresas por tecnología, sumada, sobre el tamaño total de mercado de esa
-    # área). Verificado: la suma da 5.192.959 (EE.UU.), 3.808.260 (China) y 6.646.784 (Europa),
-    # reproduciendo exactamente BASE_R1_AJUSTADA usada más abajo para proyectar Ronda 2. Eléctrico e
-    # Hidrógeno = 0% (no comercializados por ninguna empresa en R1).
+    # área). Verificado: la suma da 5.192.959 (EE.UU.), 3.808.260 (Asia) y 6.646.784 (Europa),
+    # reproduciendo exactamente BASE_R1_AJUSTADA usada más abajo para proyectar Ronda 2. Tec 3 e
+    # Tec 4 = 0% (no comercializados por ninguna empresa en R1).
     MIX_INDUSTRIA_R1 = {
-        ("EE.UU.", "Combustión"): 0.809504, ("EE.UU.", "Híbrido"): 0.190496,
-        ("EE.UU.", "Eléctrico"): 0.0, ("EE.UU.", "Hidrógeno"): 0.0,
-        ("China", "Combustión"): 0.814027, ("China", "Híbrido"): 0.185973,
-        ("China", "Eléctrico"): 0.0, ("China", "Hidrógeno"): 0.0,
-        ("Europa", "Combustión"): 0.862040, ("Europa", "Híbrido"): 0.137960,
-        ("Europa", "Eléctrico"): 0.0, ("Europa", "Hidrógeno"): 0.0,
+        ("EE.UU.", "Tec 1"): 0.809504, ("EE.UU.", "Tec 2"): 0.190496,
+        ("EE.UU.", "Tec 3"): 0.0, ("EE.UU.", "Tec 4"): 0.0,
+        ("Asia", "Tec 1"): 0.814027, ("Asia", "Tec 2"): 0.185973,
+        ("Asia", "Tec 3"): 0.0, ("Asia", "Tec 4"): 0.0,
+        ("Europa", "Tec 1"): 0.862040, ("Europa", "Tec 2"): 0.137960,
+        ("Europa", "Tec 3"): 0.0, ("Europa", "Tec 4"): 0.0,
     }
     row_mix = {}
     for mercado in MERCADOS:
@@ -1257,24 +1257,24 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
     r[0] += 1
 
     section("SECCIÓN C.D1b · DEMANDA — Cuota de mercado objetivo SOBRE LA TECNOLOGÍA")
-    # Retro-calculado para R2 = (vieja "Cuota de mercado objetivo CADIZ" R2, % del TOTAL) / (Mix de
+    # Retro-calculado para R2 = (vieja "Cuota de mercado objetivo ULTI" R2, % del TOTAL) / (Mix de
     # Industria R2 de arriba) -- así la Cuota Resultante (D1c, más abajo) reproduce EXACTO el valor
     # ya decidido para R2 (0,137 / 0,054 / 0,162 / 0,056 / 0,100 / 0,047), sin alterar la proyección
     # de una ronda ya cerrada (Estado R2 = "PLAN"). Verificación: 0,169239×0,809504=0,137000;
     # 0,283471×0,190496=0,054000; 0,199011×0,814027=0,162000; 0,301118×0,185973=0,056000;
     # 0,116004×0,862040=0,100000; 0,340680×0,137960=0,047000 (redondeo a 6 decimales).
     cuota_tec_r2 = {
-        ("EE.UU.", "Combustión"): 0.169239, ("EE.UU.", "Híbrido"): 0.283471,
-        ("China", "Combustión"): 0.199011, ("China", "Híbrido"): 0.301118,
-        ("Europa", "Combustión"): 0.116004, ("Europa", "Híbrido"): 0.340680,
+        ("EE.UU.", "Tec 1"): 0.169239, ("EE.UU.", "Tec 2"): 0.283471,
+        ("Asia", "Tec 1"): 0.199011, ("Asia", "Tec 2"): 0.301118,
+        ("Europa", "Tec 1"): 0.116004, ("Europa", "Tec 2"): 0.340680,
     }
     row_cuota = {}
     for mercado in MERCADOS:
         for tech in TECNOLOGIAS:
             dim = f"{mercado} / {tech}"
-            row = put("D1 · DEMANDA", "Cuota de mercado objetivo SOBRE LA TECNOLOGÍA", dim, "% de la tecnología", "DECISIÓN CADIZ",
-                       "[NUEVA SEMÁNTICA, Adenda 22 — antes 'Cuota de mercado objetivo CADIZ', % del mercado TOTAL] Ahora es el % que "
-                       "CADIZ apunta a capturar DENTRO del segmento de esta tecnología (se multiplica por 'Mix de Industria (TAM)' de "
+            row = put("D1 · DEMANDA", "Cuota de mercado objetivo SOBRE LA TECNOLOGÍA", dim, "% de la tecnología", "DECISIÓN ULTI",
+                       "[NUEVA SEMÁNTICA, Adenda 22 — antes 'Cuota de mercado objetivo ULTI', % del mercado TOTAL] Ahora es el % que "
+                       "ULTI apunta a capturar DENTRO del segmento de esta tecnología (se multiplica por 'Mix de Industria (TAM)' de "
                        "arriba para obtener la 'Cuota Resultante SOBRE EL TOTAL' que efectivamente se carga en CESIM). R2: retro-"
                        "calculado para no alterar la proyección ya decidida — ver nota de la sección.")
             row_cuota[(mercado, tech)] = row
@@ -1295,7 +1295,7 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
             S.apply_cell(ws, row_ronda_activa, 7 + rn, value=True, kind="calculo", align=S.ALIGN_CENTER, bold=True, size=9)
         else:
             estado_cell = f"{col(rn)}{row_estado}"
-            cuota_cell = f"{col(rn)}{row_cuota[('EE.UU.', 'Combustión')]}"
+            cuota_cell = f"{col(rn)}{row_cuota[('EE.UU.', 'Tec 1')]}"
             f_activa = f'=AND(OR({estado_cell}="PLAN",{estado_cell}="SIM",{estado_cell}="REAL"),ISNUMBER({cuota_cell}))'
             S.apply_cell(ws, row_ronda_activa, 7 + rn, value=f_activa, kind="calculo", align=S.ALIGN_CENTER, bold=True, size=9)
 
@@ -1306,7 +1306,7 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
             dim = f"{mercado} / {tech}"
             row = put("D1c · DEMANDA (RESULTANTE)", "Cuota Resultante SOBRE EL TOTAL (Copiar a CESIM)", dim, "% del mercado", "CÁLCULO",
                        "= Mix de Industria (TAM) × Cuota de mercado objetivo SOBRE LA TECNOLOGÍA, fila a fila. Este es el valor que "
-                       "efectivamente se carga en CESIM y el que alimenta la Demanda estimada CADIZ de _ENGINE_MERCADO (Sección A2) -- "
+                       "efectivamente se carga en CESIM y el que alimenta la Demanda estimada ULTI de _ENGINE_MERCADO (Sección A2) -- "
                        "ya expresado como % del mercado TOTAL, conforme al manual CESIM cap. 4.2. R0/R1: n/a (demanda histórica "
                        "hardcodeada). R2: reproduce EXACTO el valor ya decidido para la ronda (Estado=PLAN, cerrada) por construcción "
                        "de los dos bloques de arriba.")
@@ -1336,18 +1336,18 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
 
     section("SECCIÓN C.D2 · PRODUCCIÓN")
     prod_propia_hist = {
-        ("EE.UU.", "Combustión"): {0: 980, 1: 336}, ("EE.UU.", "Híbrido"): {0: 0, 1: 616},
-        ("EE.UU.", "Eléctrico"): {0: 0, 1: 0}, ("EE.UU.", "Hidrógeno"): {0: 0, 1: 0},
-        ("China", "Combustión"): {0: 400, 1: 240}, ("China", "Híbrido"): {0: 0, 1: 100},
-        ("China", "Eléctrico"): {0: 0, 1: 0}, ("China", "Hidrógeno"): {0: 0, 1: 0},
+        ("EE.UU.", "Tec 1"): {0: 980, 1: 336}, ("EE.UU.", "Tec 2"): {0: 0, 1: 616},
+        ("EE.UU.", "Tec 3"): {0: 0, 1: 0}, ("EE.UU.", "Tec 4"): {0: 0, 1: 0},
+        ("Asia", "Tec 1"): {0: 400, 1: 240}, ("Asia", "Tec 2"): {0: 0, 1: 100},
+        ("Asia", "Tec 3"): {0: 0, 1: 0}, ("Asia", "Tec 4"): {0: 0, 1: 0},
     }
-    prod_propia_r2 = {("EE.UU.", "Combustión"): 1200, ("EE.UU.", "Híbrido"): 60, ("EE.UU.", "Eléctrico"): 0, ("EE.UU.", "Hidrógeno"): 0,
-                       ("China", "Combustión"): 400, ("China", "Híbrido"): 50, ("China", "Eléctrico"): 0, ("China", "Hidrógeno"): 0}
+    prod_propia_r2 = {("EE.UU.", "Tec 1"): 1200, ("EE.UU.", "Tec 2"): 60, ("EE.UU.", "Tec 3"): 0, ("EE.UU.", "Tec 4"): 0,
+                       ("Asia", "Tec 1"): 400, ("Asia", "Tec 2"): 50, ("Asia", "Tec 3"): 0, ("Asia", "Tec 4"): 0}
     row_prod_propia = {}
     for area in AREAS:
         for tech in TECNOLOGIAS:
             dim = f"{area} / {tech}"
-            row = put("D2 · PRODUCCIÓN", "Producción propia", dim, "miles u.", "DECISIÓN CADIZ")
+            row = put("D2 · PRODUCCIÓN", "Producción propia", dim, "miles u.", "DECISIÓN ULTI")
             row_prod_propia[(area, tech)] = row
             key_pp = last_key[0]
             hv = prod_propia_hist[(area, tech)]
@@ -1358,19 +1358,19 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
                 decision_row(row, rn, key_pp, default_new=(v2_pp if rn == 2 else None), numfmt=S.NUM_UNITS, align=S.ALIGN_RIGHT, size=9)
 
     prod_terc_hist = {
-        ("EE.UU.", "Combustión"): {0: 250, 1: 480}, ("EE.UU.", "Híbrido"): {0: 0, 1: 200},
-        ("EE.UU.", "Eléctrico"): {0: 0, 1: 0}, ("EE.UU.", "Hidrógeno"): {0: 0, 1: 0},
-        ("China", "Combustión"): {0: 400, 1: 360}, ("China", "Híbrido"): {0: 0, 1: 170},
-        ("China", "Eléctrico"): {0: 0, 1: 0}, ("China", "Hidrógeno"): {0: 0, 1: 0},
+        ("EE.UU.", "Tec 1"): {0: 250, 1: 480}, ("EE.UU.", "Tec 2"): {0: 0, 1: 200},
+        ("EE.UU.", "Tec 3"): {0: 0, 1: 0}, ("EE.UU.", "Tec 4"): {0: 0, 1: 0},
+        ("Asia", "Tec 1"): {0: 400, 1: 360}, ("Asia", "Tec 2"): {0: 0, 1: 170},
+        ("Asia", "Tec 3"): {0: 0, 1: 0}, ("Asia", "Tec 4"): {0: 0, 1: 0},
     }
-    prod_terc_r2 = {("EE.UU.", "Combustión"): 0, ("EE.UU.", "Híbrido"): 0, ("EE.UU.", "Eléctrico"): 0, ("EE.UU.", "Hidrógeno"): 0,
-                     ("China", "Combustión"): 536, ("China", "Híbrido"): 343, ("China", "Eléctrico"): 0, ("China", "Hidrógeno"): 0}
+    prod_terc_r2 = {("EE.UU.", "Tec 1"): 0, ("EE.UU.", "Tec 2"): 0, ("EE.UU.", "Tec 3"): 0, ("EE.UU.", "Tec 4"): 0,
+                     ("Asia", "Tec 1"): 536, ("Asia", "Tec 2"): 343, ("Asia", "Tec 3"): 0, ("Asia", "Tec 4"): 0}
     row_prod_terc = {}
     for area in AREAS:
         for tech in TECNOLOGIAS:
             dim = f"{area} / {tech}"
-            row = put("D2 · PRODUCCIÓN", "Producción tercerizada", dim, "miles u.", "DECISIÓN CADIZ",
-                       "China/Combustión y China/Híbrido en R2 incluyen +35k/+15k de safety stock (decisión estratégica ya consolidada del equipo, ver histórico R2 del motor anterior).")
+            row = put("D2 · PRODUCCIÓN", "Producción tercerizada", dim, "miles u.", "DECISIÓN ULTI",
+                       "Asia/Tec 1 y Asia/Tec 2 en R2 incluyen +35k/+15k de safety stock (decisión estratégica ya consolidada del equipo, ver histórico R2 del motor anterior).")
             row_prod_terc[(area, tech)] = row
             key_pt = last_key[0]
             hv = prod_terc_hist[(area, tech)]
@@ -1382,7 +1382,7 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
 
     row_inv_fab = {}
     for area in AREAS:
-        row = put("D2 · PRODUCCIÓN", "Inversión (+) / Desinversión (−) en fábrica", area, "u. de capacidad", "DECISIÓN CADIZ",
+        row = put("D2 · PRODUCCIÓN", "Inversión (+) / Desinversión (−) en fábrica", area, "u. de capacidad", "DECISIÓN ULTI",
                    "Inversión: capacidad +2 rondas, pago +1 ronda. Desinversión: capacidad −1 ronda, cobro +1 ronda.")
         row_inv_fab[area] = row
         key_inv_fab = last_key[0]
@@ -1404,7 +1404,7 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
     d3_r2 = {"Cantidad de personal de I+D": 5300, "Salario mensual": 6300, "Presupuesto mensual de capacitación": 1100}
     row_d3 = {}
     for var, unidad in [("Cantidad de personal de I+D", "personas"), ("Salario mensual", "USD"), ("Presupuesto mensual de capacitación", "USD")]:
-        row = put("D3 · RRHH", var, "Global", unidad, "DECISIÓN CADIZ")
+        row = put("D3 · RRHH", var, "Global", unidad, "DECISIÓN ULTI")
         row_d3[var] = row
         key_d3 = last_key[0]
         S.apply_cell(ws, row, 7 + 0, value="n/a (RDOS no publica headcount por ronda)", kind="plain", align=S.ALIGN_CENTER, size=8, italic=True)
@@ -1415,18 +1415,18 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
     r[0] += 1
 
     section("SECCIÓN C.D4 · I+D / TECNOLOGÍA")
-    jornadas_r2 = {"Combustión": 350961, "Híbrido": 591076, "Eléctrico": 0, "Hidrógeno": 0}
+    jornadas_r2 = {"Tec 1": 350961, "Tec 2": 591076, "Tec 3": 0, "Tec 4": 0}
     row_jornadas = {}
     row_licencia = {}
     for tech in TECNOLOGIAS:
-        row = put("D4 · I+D / TECNOLOGÍA", "Jornadas propias asignadas a desarrollo", tech, "jornadas", "DECISIÓN CADIZ", "1 ronda de rezago hasta estar disponible (manual cap. 7) — no modelado como gatillo de desbloqueo en este workbook de gestión (ver README).")
+        row = put("D4 · I+D / TECNOLOGÍA", "Jornadas propias asignadas a desarrollo", tech, "jornadas", "DECISIÓN ULTI", "1 ronda de rezago hasta estar disponible (manual cap. 7) — no modelado como gatillo de desbloqueo en este workbook de gestión (ver README).")
         row_jornadas[tech] = row
         key_jorn = last_key[0]
         S.apply_cell(ws, row, 7 + 0, value="n/a (ronda ya jugada)", kind="plain", align=S.ALIGN_CENTER, size=8, italic=True)
         # [Extensión Ronda 1] ver nota en D5 Marketing arriba -- sin dato real de R1, default blanco.
         for rn in range(1, 13):
             decision_row(row, rn, key_jorn, default_new=(jornadas_r2[tech] if rn == 2 else None), numfmt=S.NUM_UNITS, align=S.ALIGN_RIGHT, size=9)
-        row2 = put("D4 · I+D / TECNOLOGÍA", "Compra de licencia (USD)", tech, "USD", "DECISIÓN CADIZ")
+        row2 = put("D4 · I+D / TECNOLOGÍA", "Compra de licencia (USD)", tech, "USD", "DECISIÓN ULTI")
         row_licencia[tech] = row2
         key_lic = last_key[0]
         S.apply_cell(ws, row2, 7 + 0, value="n/a (ronda ya jugada)", kind="plain", align=S.ALIGN_CENTER, size=8, italic=True)
@@ -1449,31 +1449,31 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
     #
     # Baseline Ronda 1 (dato aportado por el usuario, no inventado ni heredado del motor anterior): el
     # usuario explicó el mecanismo con "si tengo 7 y genero 1 característica extra... paso a tener 8
-    # disponibles" -- de donde se deduce que el stock ANTES de Ronda 2 (= Ronda 1) era Combustión=7,
-    # Híbrido=2 (Eléctrico/Hidrógeno=0, no habilitadas). Es un dato histórico real aportado por el
+    # disponibles" -- de donde se deduce que el stock ANTES de Ronda 2 (= Ronda 1) era Tec 1=7,
+    # Tec 2=2 (Tec 3/Tec 4=0, no habilitadas). Es un dato histórico real aportado por el
     # usuario (categoría 2 del marco del proyecto), no un supuesto propio de este modelo.
     #
-    # CORRECCIÓN (auditoría R2→R3, sesión Mati): el valor de Híbrido R2 estaba hardcodeado en 3
+    # CORRECCIÓN (auditoría R2→R3, sesión Mati): el valor de Tec 2 R2 estaba hardcodeado en 3
     # ("híbrido: 3 características ya que se generaron nuevas", dato de una sesión anterior), pero
-    # el archivo Cadiz_proyeccion_R3.xlsx que el equipo cargó -- fuente autoritativa para este dato,
+    # el archivo Ulti_proyeccion_R3.xlsx que el equipo cargó -- fuente autoritativa para este dato,
     # porque "Características disponibles" es tracking interno propio, no algo que el RDOS de CESIM
-    # reporte -- trae Híbrido R2=4 tipeado a mano. Se verificó que 4 es el valor internamente
+    # reporte -- trae Tec 2 R2=4 tipeado a mano. Se verificó que 4 es el valor internamente
     # consistente: el propio archivo del usuario, con R2=4 y R3=10, cachea en "Costo estimado de
-    # generar/adquirir características nuevas (referencia)" Híbrido R3 = diferencial(10-4=6) ×
+    # generar/adquirir características nuevas (referencia)" Tec 2 R3 = diferencial(10-4=6) ×
     # 325.000.000 = 1.950.000.000 -- exactamente el monto que motivó el reporte del Hallazgo 2
     # ("compra de licencia" no impactaba EBITDA). Con el valor viejo (R2=3) el diferencial sería 7,
     # no 6, y esa cifra de referencia no cuadraría. Además, una comparación barrido de las 172
     # celdas de decisión R2 comparables entre este código y el archivo del usuario dio UNA sola
     # diferencia: esta. Se corrige 3->4 acá; sigue siendo categoría 2 (dato histórico real), solo que
     # con una fuente más confiable que la que se usó originalmente.
-    disponible_r1 = {"Combustión": 7, "Híbrido": 2, "Eléctrico": 0, "Hidrógeno": 0}
-    disponible_r2 = {"Combustión": 8, "Híbrido": 4, "Eléctrico": 0, "Hidrógeno": 0}
+    disponible_r1 = {"Tec 1": 7, "Tec 2": 2, "Tec 3": 0, "Tec 4": 0}
+    disponible_r2 = {"Tec 1": 8, "Tec 2": 4, "Tec 3": 0, "Tec 4": 0}
     row_disponible = {}
     row_diferencial = {}
     row_adq_ext = {}
     row_costo_caract_calc = {}
     for tech in TECNOLOGIAS:
-        row = put("D4 · I+D / TECNOLOGÍA", "Características disponibles (acumulado, stock por tecnología)", tech, "cantidad", "DECISIÓN CADIZ",
+        row = put("D4 · I+D / TECNOLOGÍA", "Características disponibles (acumulado, stock por tecnología)", tech, "cantidad", "DECISIÓN ULTI",
                    "Stock TOTAL acumulado de características de esta tecnología (I+D propio o licencia, manual cap. 7) -- GLOBAL, no por mercado. Ronda 1: dato aportado por el usuario (ver Adenda 9 en Informe_V2.md), no un supuesto propio. Distinto de 'Características ofrecidas' (Sección D5, Marketing): esa es cuántas de este stock se muestran en cada mercado.")
         row_disponible[tech] = row
         S.apply_cell(ws, row, 7 + 0, value="n/a (ronda ya jugada)", kind="plain", align=S.ALIGN_CENTER, size=8, italic=True)
@@ -1500,9 +1500,9 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
         # todo el crecimiento se hubiera comprado -- sobreestimaba cuando parte vino de jornadas. Ahora
         # el equipo carga acá, a mano, cuántas de las nuevas características de esta ronda adquirió
         # EXTERNAMENTE (vía licencia) -- el resto del diferencial se asume generado con jornadas propias,
-        # sin costo adicional. Dato manual (DECISIÓN CADIZ), no una fórmula: el modelo no tiene forma de
+        # sin costo adicional. Dato manual (DECISIÓN ULTI), no una fórmula: el modelo no tiene forma de
         # inferir esta separación por sí solo (el manual no publica una tasa jornadas->características).
-        row_adq = put("D4 · I+D / TECNOLOGÍA", "Características adquiridas externamente (compra de licencia) esta ronda", tech, "cantidad", "DECISIÓN CADIZ",
+        row_adq = put("D4 · I+D / TECNOLOGÍA", "Características adquiridas externamente (compra de licencia) esta ronda", tech, "cantidad", "DECISIÓN ULTI",
                       "De las 'Características nuevas generadas esta ronda' (fila de arriba), cuántas se adquirieron EXTERNAMENTE (vía licencia) -- el resto se asume generado con jornadas propias (sin costo incremental, ya cubierto por el RRHH fijo de D3). Se cruza con 'Costo de generar/adquirir característica nueva' (Sección B) en la fila de abajo. Dato manual del equipo -- el modelo no puede inferir esta separación por sí solo.")
         row_adq_ext[tech] = row_adq
         key_adq = last_key[0]
@@ -1524,26 +1524,26 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
 
     section("SECCIÓN C.D5 · MARKETING")
     # CORRECCIÓN (confirmada con el usuario, ver Adenda 6 / hotfix README) -- precio y promoción de
-    # Ronda 2 actualizados con la decisión real de CADIZ. Promoción: el usuario entregó los montos en
+    # Ronda 2 actualizados con la decisión real de ULTI. Promoción: el usuario entregó los montos en
     # "miles USD" (unidad nativa de la pantalla de decisión de CESIM para este campo, igual que el
     # resto de las cifras "miles USD" del proyecto) -- se multiplican x1000 acá para quedar en la
     # unidad declarada de esta fila (USD absoluto), confirmado explícitamente antes de aplicar (600.000
     # miles USD = USD 600.000.000, no USD 600.000 -- una diferencia de 1000x que se verificó en vez de
     # asumirse, dado que a simple vista el monto parecía ~700 veces más chico que el anterior).
-    precio_r2 = {("EE.UU.", "Combustión"): 22500, ("EE.UU.", "Híbrido"): 28000,
-                 ("China", "Combustión"): 140000, ("China", "Híbrido"): 175000,
-                 ("Europa", "Combustión"): 27000, ("Europa", "Híbrido"): 31000}
-    promo_r2 = {("EE.UU.", "Combustión"): 600_000_000, ("EE.UU.", "Híbrido"): 500_000_000,
-                ("China", "Combustión"): 500_000_000, ("China", "Híbrido"): 400_000_000,
-                ("Europa", "Combustión"): 500_000_000, ("Europa", "Híbrido"): 450_000_000}
-    enfoque_r2 = {("EE.UU.", "Combustión"): "Marca", ("EE.UU.", "Híbrido"): "Marca",
-                  ("China", "Combustión"): "Características", ("China", "Híbrido"): "Características",
-                  ("Europa", "Combustión"): "Marca", ("Europa", "Híbrido"): "Marca"}
+    precio_r2 = {("EE.UU.", "Tec 1"): 22500, ("EE.UU.", "Tec 2"): 28000,
+                 ("Asia", "Tec 1"): 140000, ("Asia", "Tec 2"): 175000,
+                 ("Europa", "Tec 1"): 27000, ("Europa", "Tec 2"): 31000}
+    promo_r2 = {("EE.UU.", "Tec 1"): 600_000_000, ("EE.UU.", "Tec 2"): 500_000_000,
+                ("Asia", "Tec 1"): 500_000_000, ("Asia", "Tec 2"): 400_000_000,
+                ("Europa", "Tec 1"): 500_000_000, ("Europa", "Tec 2"): 450_000_000}
+    enfoque_r2 = {("EE.UU.", "Tec 1"): "Marca", ("EE.UU.", "Tec 2"): "Marca",
+                  ("Asia", "Tec 1"): "Características", ("Asia", "Tec 2"): "Características",
+                  ("Europa", "Tec 1"): "Marca", ("Europa", "Tec 2"): "Marca"}
     # CORRECCIÓN (Adenda 9): "Características ofrecidas" es una decisión de MARKETING (manual cap. 8,
     # tope 10 por producto/mercado) -- de las características DISPONIBLES por tecnología (stock
     # global, Sección D4 más arriba), cuántas se muestran/ofrecen en ESTE mercado. Antes vivía
     # mezclada bajo el bloque "D4 · I+D / TECNOLOGÍA" (confundía el stock de I+D con la decisión de
-    # Marketing); se reubica acá. Estrategia CADIZ confirmada por el usuario: siempre el máximo
+    # Marketing); se reubica acá. Estrategia ULTI confirmada por el usuario: siempre el máximo
     # disponible -> por eso replica en R2 el mismo valor de "Características disponibles" (D4) en
     # los 3 mercados (no es una coincidencia ni un dato hardcodeado two-veces: es la decisión real).
     caract_of_r2 = {(mercado, tech): disponible_r2.get(tech, 0) for mercado in MERCADOS for tech in TECNOLOGIAS}
@@ -1563,17 +1563,17 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
     for mercado in MERCADOS:
         for tech in TECNOLOGIAS:
             dim = f"{mercado} / {tech}"
-            row_p = put("D5 · MARKETING", "Precio de venta", dim, MONEDA_MERCADO[mercado], "DECISIÓN CADIZ")
+            row_p = put("D5 · MARKETING", "Precio de venta", dim, MONEDA_MERCADO[mercado], "DECISIÓN ULTI")
             row_precio[(mercado, tech)] = row_p
             key_p = last_key[0]
-            row_pr = put("D5 · MARKETING", "Presupuesto de promoción", dim, "USD", "DECISIÓN CADIZ")
+            row_pr = put("D5 · MARKETING", "Presupuesto de promoción", dim, "USD", "DECISIÓN ULTI")
             row_promo[(mercado, tech)] = row_pr
             key_pr = last_key[0]
-            row_e = put("D5 · MARKETING", "Enfoque de estrategia de marketing", dim, "categoría", "DECISIÓN CADIZ")
+            row_e = put("D5 · MARKETING", "Enfoque de estrategia de marketing", dim, "categoría", "DECISIÓN ULTI")
             row_enfoque[(mercado, tech)] = row_e
             key_e = last_key[0]
-            row_c = put("D5 · MARKETING", "Características ofrecidas (de las disponibles, tope 10)", dim, "cantidad", "DECISIÓN CADIZ",
-                        "De las características DISPONIBLES de esta tecnología (stock global, Sección D4), cuántas se ofrecen en ESTE mercado -- manual cap. 8, tope 10. No puede superar el stock disponible de D4 para esa tecnología. Es la cantidad que ya usaba (correctamente) la fórmula de 'Costos de la característica' del P&L -- ver iref más abajo.")
+            row_c = put("D5 · MARKETING", "Características ofrecidas (de las disponibles, tope 10)", dim, "cantidad", "DECISIÓN ULTI",
+                        "De las características DISPONIBLES de esta tecnología (stock global, Sección D4), cuántas se ofrecen en ESTE mercado -- manual cap. 8, tope 10. No puede superar el stock disponible de D4 para esa tecnología. Es la cantidad que ya usaba (correctamente) la fórmula de 'Costos de características' del P&L -- ver iref más abajo.")
             row_caract[(mercado, tech)] = row_c
             key_c = last_key[0]
             dv_enfoque.add(f"{col(0)}{row_e}:{col(12)}{row_e}")
@@ -1593,10 +1593,10 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
 
     section("SECCIÓN C.D6 · LOGÍSTICA — Orden de prioridad de entrega (1=primero, 3=último; ranking completo y sin empates por área/tecnología)")
     ranking_r2 = {
-        ("EE.UU.", "Combustión", "EE.UU."): '2', ("EE.UU.", "Combustión", "China"): '3', ("EE.UU.", "Combustión", "Europa"): '1',
-        ("EE.UU.", "Híbrido", "EE.UU."): '2', ("EE.UU.", "Híbrido", "China"): '3', ("EE.UU.", "Híbrido", "Europa"): '1',
-        ("China", "Combustión", "EE.UU."): '3', ("China", "Combustión", "China"): '2', ("China", "Combustión", "Europa"): '1',
-        ("China", "Híbrido", "EE.UU."): '2', ("China", "Híbrido", "China"): '3', ("China", "Híbrido", "Europa"): '1',
+        ("EE.UU.", "Tec 1", "EE.UU."): '2', ("EE.UU.", "Tec 1", "Asia"): '3', ("EE.UU.", "Tec 1", "Europa"): '1',
+        ("EE.UU.", "Tec 2", "EE.UU."): '2', ("EE.UU.", "Tec 2", "Asia"): '3', ("EE.UU.", "Tec 2", "Europa"): '1',
+        ("Asia", "Tec 1", "EE.UU."): '3', ("Asia", "Tec 1", "Asia"): '2', ("Asia", "Tec 1", "Europa"): '1',
+        ("Asia", "Tec 2", "EE.UU."): '2', ("Asia", "Tec 2", "Asia"): '3', ("Asia", "Tec 2", "Europa"): '1',
     }
     row_ranking = {}
     # Hotfix regional: lista oculta en columna U (filas 12-14) en vez de cadena separada por comas.
@@ -1612,7 +1612,7 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
         for tech in TECNOLOGIAS:
             for mercado in MERCADOS:
                 dim = f"Área {area} / {tech} → mercado {mercado}"
-                row = put("D6 · LOGÍSTICA", "Orden de prioridad de entrega (1=primero, 3=último)", dim, "ranking", "DECISIÓN CADIZ")
+                row = put("D6 · LOGÍSTICA", "Orden de prioridad de entrega (1=primero, 3=último)", dim, "ranking", "DECISIÓN ULTI")
                 row_ranking[(area, tech, mercado)] = row
                 key_rank = last_key[0]
                 dv_rank.add(f"{col(0)}{row}:{col(12)}{row}")
@@ -1627,7 +1627,7 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
     row_mult_tp = {}
     for par in PARES:
         dim = f"{par[0]} → {par[1]}"
-        row = put("D7 · IMPUESTOS", "Multiplicador de precio de transferencia", dim, "x costo directo (1.0-2.0)", "DECISIÓN CADIZ",
+        row = put("D7 · IMPUESTOS", "Multiplicador de precio de transferencia", dim, "x costo directo (1.0-2.0)", "DECISIÓN ULTI",
                    "Rango [1,2] (manual cap. 10). Recomendación del profesor: no planificar, ajustar jugando.")
         row_mult_tp[par] = row
         key_tp = last_key[0]
@@ -1646,7 +1646,7 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
         "Dividendos pagados a accionistas (monto)": 3_000_000_000,
     }
     for var in d8_simple_r2:
-        row = put("D8 · FINANZAS", var, "Casa matriz EE.UU.", "USD", "DECISIÓN CADIZ")
+        row = put("D8 · FINANZAS", var, "Casa matriz EE.UU.", "USD", "DECISIÓN ULTI")
         row_d8[var] = row
         key_d8 = last_key[0]
         S.apply_cell(ws, row, 7 + 0, value="n/a (ronda ya jugada)", kind="plain", align=S.ALIGN_CENTER, size=8, italic=True)
@@ -1664,7 +1664,7 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
             if origen == destino:
                 continue
             dim = f"{origen} → {destino}"
-            row = put("D8 · FINANZAS", "Transferencia de fondos entre países (préstamo interno)", dim, "USD", "DECISIÓN CADIZ", "Sin costo/interés (definición cerrada del equipo).")
+            row = put("D8 · FINANZAS", "Transferencia de fondos entre países (préstamo interno)", dim, "USD", "DECISIÓN ULTI", "Sin costo/interés (definición cerrada del equipo).")
             row_transf[(origen, destino)] = row
             key_transf = last_key[0]
             S.apply_cell(ws, row, 7 + 0, value="n/a (ronda ya jugada)", kind="plain", align=S.ALIGN_CENTER, size=8, italic=True)
@@ -1673,7 +1673,7 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
                 decision_row(row, rn, key_transf, default_new=(0 if rn in (1, 2) else None), numfmt=S.NUM_MONEY, align=S.ALIGN_RIGHT, size=9)
 
     row_div_filial = {}
-    for filial in ("China", "Europa"):
+    for filial in ("Asia", "Europa"):
         row = put("D8 · FINANZAS", "Dividendos pagados a casa matriz (filial)", filial, "USD", "NO DETERMINADO",
                    "[AMBIGÜEDAD NO RESUELTA] No confirmado si es una decisión separada de la transferencia de fondos o el mismo mecanismo clasificado distinto por CESIM. Default 0 hasta confirmar.")
         row_div_filial[filial] = row
@@ -1699,7 +1699,7 @@ def build_inputs(wb, rondas_reales=frozenset({0, 1}), decisiones_historicas=None
     return ws, row_idx, {"ronda": row_ronda, "escenario": row_escenario, "estado": row_estado, "sens": sens_rows}, cond, decisiones
 
 
-PARES_EXPORT = [("EE.UU.", "China"), ("EE.UU.", "Europa"), ("China", "EE.UU."), ("China", "Europa")]
+PARES_EXPORT = [("EE.UU.", "Asia"), ("EE.UU.", "Europa"), ("Asia", "EE.UU."), ("Asia", "Europa")]
 
 
 def iref(inputs_idx, bloque, variable, dimension, ronda):
@@ -1756,11 +1756,11 @@ def build_engine_produccion_part1(wb, inputs_idx, rondas_reales=frozenset({0, 1}
     p_tasa_ap = put("PARAM", "Tasa de reducción de costo por duplicación de volumen (Wright's Law)", "Todas las tecnologías", "%", "SUPUESTO")
     S.apply_cell(ws, p_tasa_ap, 7, value=0.10, kind="input", numfmt=S.NUM_PCT1, align=S.ALIGN_RIGHT, size=9)
     p_capfab = {}
-    for area, v in (("EE.UU.", 200000), ("China", 250000)):
+    for area, v in (("EE.UU.", 200000), ("Asia", 250000)):
         row = put("PARAM", "Capacidad por fábrica", area, "u.", "SUPUESTO")
         p_capfab[area] = row
         S.apply_cell(ws, row, 7, value=v, kind="input", numfmt=S.NUM_UNITS, align=S.ALIGN_RIGHT, size=9)
-    p_tasadep = put("PARAM", "Tasa de depreciación (saldo decreciente)", "EE.UU. y China", "%", "REGLA ESTRUCTURAL CESIM",
+    p_tasadep = put("PARAM", "Tasa de depreciación (saldo decreciente)", "EE.UU. y Asia", "%", "REGLA ESTRUCTURAL CESIM",
                      "Fija en 10%, validada exacta contra RDOS R0→R1 (manual cap. 5.3, metodología de saldo decreciente).")
     S.apply_cell(ws, p_tasadep, 7, value=0.10, kind="historico", numfmt=S.NUM_PCT1, align=S.ALIGN_RIGHT, size=9)
     r[0] += 1
@@ -1770,15 +1770,15 @@ def build_engine_produccion_part1(wb, inputs_idx, rondas_reales=frozenset({0, 1}
 
     # -------- SECCIÓN A: CAPACIDAD OPERATIVA POR ÁREA --------
     section("SECCIÓN A · CAPACIDAD OPERATIVA POR ÁREA")
-    cap_real0 = {"EE.UU.": 1_400_000, "China": 500_000}
+    cap_real0 = {"EE.UU.": 1_400_000, "Asia": 500_000}
     row_cap = {}
     row_prodtot = {}
     row_util = {}
     row_mult = {}
     row_costobasico = {}
-    costo_basico_r0 = {"EE.UU.": 14721.1837038412, "China": 14033.8333357063}
+    costo_basico_r0 = {"EE.UU.": 14721.1837038412, "Asia": 14033.8333357063}
     for area in AREAS:
-        row_inv = put("A. Capacidad", "Inversión(+)/Desinversión(−) decidida (D2)", area, "u. capacidad", "DECISIÓN CADIZ (link)")
+        row_inv = put("A. Capacidad", "Inversión(+)/Desinversión(−) decidida (D2)", area, "u. capacidad", "DECISIÓN ULTI (link)")
         row_entra = put("A. Capacidad", "Capacidad que entra en operación esta ronda (rezago +2)", area, "u.")
         row_sale = put("A. Capacidad", "Capacidad que sale de operación esta ronda (rezago +1)", area, "u.")
         row_c = put("A. Capacidad", "Capacidad operativa (cierre de ronda)", area, "u.", "OUTPUT")
@@ -1831,7 +1831,7 @@ def build_engine_produccion_part1(wb, inputs_idx, rondas_reales=frozenset({0, 1}
     r[0] += 1
 
     # -------- SECCIÓN B: COSTO UNITARIO PROPIO POR ÁREA/TECNOLOGÍA (curva de aprendizaje) --------
-    section("SECCIÓN B · COSTO UNITARIO DE PRODUCCIÓN PROPIA (curva de aprendizaje, Wright's Law sobre producción propia acumulada de CADIZ)")
+    section("SECCIÓN B · COSTO UNITARIO DE PRODUCCIÓN PROPIA (curva de aprendizaje, Wright's Law sobre producción propia acumulada de ULTI)")
     row_prod_u = {}
     row_acum = {}
     row_factor = {}
@@ -1841,7 +1841,7 @@ def build_engine_produccion_part1(wb, inputs_idx, rondas_reales=frozenset({0, 1}
             dim = f"{area} / {tech}"
             row_p = put("B. Costo propio", "Producción propia de la ronda", dim, "u.")
             row_prod_u[(area, tech)] = row_p
-            row_a = put("B. Costo propio", "Producción propia acumulada de CADIZ (cierre)", dim, "u.")
+            row_a = put("B. Costo propio", "Producción propia acumulada de ULTI (cierre)", dim, "u.")
             row_acum[(area, tech)] = row_a
             row_f = put("B. Costo propio", "Factor de curva de aprendizaje", dim, "x")
             row_factor[(area, tech)] = row_f
@@ -1894,12 +1894,12 @@ def build_engine_produccion_part1(wb, inputs_idx, rondas_reales=frozenset({0, 1}
             disp_u_hist[k][1], disp_v_hist[k][1], ventas_hist_u[k][1], finu_hist[k][1], finv_hist[k][1] = r1
 
     # (disponible_u, disponible_v, ventas_u, inv_final_u, inv_final_v)
-    seed("EE.UU.", "Combustión", r0=(1_230_000.0, 17_445_471_302.3214, 1_230_000.0, 0.0, 0.0),
+    seed("EE.UU.", "Tec 1", r0=(1_230_000.0, 17_445_471_302.3214, 1_230_000.0, 0.0, 0.0),
                                    r1=(816_000.0, 10_146_142_867.2938, 816_000.0, 0.0, 0.0))
-    seed("EE.UU.", "Híbrido", r1=(816_000.0, 12_725_389_944.3835, 520_789.0, 295_211.0, 4_947_976_593.14158))
-    seed("China", "Combustión", r0=(800_000.0, 9_726_338_744.77752, 800_000.0, 0.0, 0.0),
+    seed("EE.UU.", "Tec 2", r1=(816_000.0, 12_725_389_944.3835, 520_789.0, 295_211.0, 4_947_976_593.14158))
+    seed("Asia", "Tec 1", r0=(800_000.0, 9_726_338_744.77752, 800_000.0, 0.0, 0.0),
                                   r1=(600_000.0, 6_910_348_459.1074, 600_000.0, 0.0, 0.0))
-    seed("China", "Híbrido", r1=(270_000.0, 4_192_252_297.9577, 156_005.0, 113_995.0, 1_856_502_503.67271))
+    seed("Asia", "Tec 2", r1=(270_000.0, 4_192_252_297.9577, 156_005.0, 113_995.0, 1_856_502_503.67271))
     row_terc_u = {}
     row_costo_terc = {}
     row_inv_ini_u = {}
@@ -1965,7 +1965,7 @@ def build_engine_produccion_part1(wb, inputs_idx, rondas_reales=frozenset({0, 1}
                     # Fix 1 (auditoría R3): ronda YA JUGADA con RDOS pero >1 (ej. R2) -- sembrar con
                     # el dato REAL (extract_inventario_real), no con el FIFO propio del motor (que
                     # antes se aplicaba por igual a CUALQUIER ronda >1, real o planificada, e
-                    # inventaba un reparto EE.UU./China del inventario final que no era el real --
+                    # inventaba un reparto EE.UU./Asia del inventario final que no era el real --
                     # ver docstring de extract_inventario_real()).
                     cprev = col(rn - 1)
                     S.apply_cell(ws, row_ini_u, 7 + rn, value=f"={cprev}{row_fu}", kind="calculo", numfmt=S.NUM_UNITS, align=S.ALIGN_RIGHT, size=8)
@@ -1984,7 +1984,7 @@ def build_engine_produccion_part1(wb, inputs_idx, rondas_reales=frozenset({0, 1}
                     # vez del dato RDOS real y preciso (60.200) -- y sin contar "Importado desde [otra
                     # área]" (transferencia entre áreas, RDOS "Detalles de logística"), que esta
                     # fórmula no tenía ningún término para sumar. Las dos cosas juntas hacían que, para
-                    # más de un área/tecnología en R2 (EE.UU./Combustión, EE.UU./Híbrido), "Ventas"
+                    # más de un área/tecnología en R2 (EE.UU./Tec 1, EE.UU./Tec 2), "Ventas"
                     # (ya sembrada con el dato real preciso, ver row_v abajo) terminara superando a
                     # "Disponibilidad" -- ERROR físicamente imposible en el control "Ventas <=
                     # Disponibilidad". Se corrige sembrando Disponibilidad TAMBIÉN 100% desde el dato
@@ -2071,7 +2071,7 @@ def build_engine_produccion_part1(wb, inputs_idx, rondas_reales=frozenset({0, 1}
     section("SECCIÓN D · ACTIVO FIJO Y DEPRECIACIÓN (rollforward, saldo decreciente 10%)")
     seed_af = {
         "EE.UU.": {"bruto0": 9_045_615_600.0, "dep0": 1_005_068_400.0, "pago1": 14_000_000.0, "bruto1": 9_059_615_600.0, "dep1": 904_561_560.0, "depacum1": 904_561_560.0, "resid1": 8_155_054_040.0},
-        "China": {"bruto0": 1_782_588_600.0, "dep0": 198_065_400.0, "pago1": 4_000_000.0, "bruto1": 1_786_588_600.0, "dep1": 178_258_860.0, "depacum1": 178_258_860.0, "resid1": 1_608_329_740.0},
+        "Asia": {"bruto0": 1_782_588_600.0, "dep0": 198_065_400.0, "pago1": 4_000_000.0, "bruto1": 1_786_588_600.0, "dep1": 178_258_860.0, "depacum1": 178_258_860.0, "resid1": 1_608_329_740.0},
     }
     # Fix 4 (auditoría R2->R3, hallazgo NUEVO no reportado por el usuario -- detectado al regenerar
     # R3 con R2 real): el rollforward de "Valor residual/neto" de acá abajo NUNCA se reancla al
@@ -2274,7 +2274,7 @@ def build_engine_mercado(wb, inputs_idx, prod_out, sens_rows=None, rdos_files=No
         S.style_section_row(ws, r[0], title, ncols)
         r[0] += 1
 
-    # Ronda N.N (Fase 4, frontera dinámica): Tamaño de mercado / Demanda estimada CADIZ para
+    # Ronda N.N (Fase 4, frontera dinámica): Tamaño de mercado / Demanda estimada ULTI para
     # CUALQUIER ronda con RDOS -- ver extract_mercado_real() (verificado bottom-up, reemplaza los
     # diccionarios tam_hist/dem_real que antes solo cubrían R0/R1 a mano).
     tam_real, dem_real = extract_mercado_real(rdos_files or {})
@@ -2282,14 +2282,14 @@ def build_engine_mercado(wb, inputs_idx, prod_out, sens_rows=None, rdos_files=No
     # plataforma CESIM al momento de decidir Ronda 2 (no reconstruible desde los archivos del
     # proyecto). Se conserva solo como registro histórico -- YA NO se usa como base de cálculo
     # (ver nota extendida más abajo, Sección A1).
-    BASE_R1_AJUSTADA = {"EE.UU.": 5_193_000.0, "China": 3_808_000.0, "Europa": 6_647_000.0}
+    BASE_R1_AJUSTADA = {"EE.UU.": 5_193_000.0, "Asia": 3_808_000.0, "Europa": 6_647_000.0}
 
     # -------- SECCIÓN A1: TAMAÑO DE MERCADO TOTAL --------
     section("SECCIÓN A1 · TAMAÑO DE MERCADO TOTAL (todas las empresas, por mercado)")
     # Ronda N.N (Fase 4, frontera dinámica): tam_real/dem_real ahora vienen de extract_mercado_real()
-    # (verificado bottom-up contra R0-R3: Tamaño de mercado = Σ Ventas CADIZ / Cuota total CADIZ,
+    # (verificado bottom-up contra R0-R3: Tamaño de mercado = Σ Ventas ULTI / Cuota total ULTI,
     # exacto a 10 decimales contra los valores antes hardcodeados a mano para R0/R1; Demanda estimada
-    # CADIZ = fila "Demanda, miles unidades" propia de CADIZ dentro de cada tecnología -- 0 mismatches
+    # ULTI = fila "Demanda, miles unidades" propia de ULTI dentro de cada tecnología -- 0 mismatches
     # en las 24 combinaciones mercado×tecnología×ronda de R0/R1). Reemplaza los diccionarios
     # tam_hist/dem_real (solo R0/R1, copiados a mano) -- ahora cualquier ronda con RDOS entra igual.
     #
@@ -2309,7 +2309,7 @@ def build_engine_mercado(wb, inputs_idx, prod_out, sens_rows=None, rdos_files=No
                     "[RETIRADA DEL CÁLCULO, Fase 4] Observado por el equipo en la plataforma CESIM al decidir R2 -- no reconstruible ni generalizable a otras rondas. Se conserva solo como registro histórico.")
         row_tam_base[mercado] = row_b
         row_t = put("A1. Tamaño de mercado", "Tamaño de mercado total estimado", mercado, "u.", "CÁLCULO",
-                    "Ronda con RDOS: derivado de RDOS real (ventas CADIZ / cuota total CADIZ). Ronda sin RDOS: ronda anterior × (1+crecimiento D1) -- ya sea que la ronda anterior sea real o proyectada.")
+                    "Ronda con RDOS: derivado de RDOS real (ventas ULTI / cuota total ULTI). Ronda sin RDOS: ronda anterior × (1+crecimiento D1) -- ya sea que la ronda anterior sea real o proyectada.")
         row_tam[mercado] = row_t
         for rn in RONDAS:
             c = col(rn)
@@ -2328,13 +2328,13 @@ def build_engine_mercado(wb, inputs_idx, prod_out, sens_rows=None, rdos_files=No
                 S.apply_cell(ws, row_t, 7 + rn, value=f, kind="calculo", numfmt=S.NUM_UNITS, align=S.ALIGN_RIGHT, size=8)
     r[0] += 1
 
-    # -------- SECCIÓN A2: DEMANDA ESTIMADA CADIZ --------
-    section("SECCIÓN A2 · DEMANDA ESTIMADA DE CADIZ POR MERCADO Y TECNOLOGÍA (proyección propia, no garantizada por CESIM)")
+    # -------- SECCIÓN A2: DEMANDA ESTIMADA ULTI --------
+    section("SECCIÓN A2 · DEMANDA ESTIMADA DE ULTI POR MERCADO Y TECNOLOGÍA (proyección propia, no garantizada por CESIM)")
     row_demanda = {}
     for mercado in MERCADOS:
         for tech in TECNOLOGIAS:
             dim = f"{mercado} / {tech}"
-            row_d = put("A2. Demanda CADIZ", "Demanda estimada CADIZ", dim, "u.", "CÁLCULO",
+            row_d = put("A2. Demanda ULTI", "Demanda estimada ULTI", dim, "u.", "CÁLCULO",
                         "Ronda con RDOS: histórico real (RDOS). Ronda sin RDOS: Tamaño de mercado (A1) × Cuota Resultante SOBRE EL TOTAL (D1c = Mix de "
                         "Industria D1a × Cuota sobre la Tecnología D1b) — SUPUESTO, no garantizado por CESIM. Ver Adenda 22.")
             row_demanda[(mercado, tech)] = row_d
@@ -2382,7 +2382,7 @@ def build_engine_mercado(wb, inputs_idx, prod_out, sens_rows=None, rdos_files=No
                 rank_cell = {m: iref(inputs_idx, "D6 · LOGÍSTICA", "Orden de prioridad de entrega (1=primero, 3=último)", f"Área {area} / {tech} → mercado {m}", rn) for m in MERCADOS}
                 for slot in (1, 2, 3):
                     row_m = slot_mercado_row[(area, tech, slot)]
-                    # BUGFIX (verificado con Cadiz_proyeccion_R3_subir.xlsx): la celda de decisión
+                    # BUGFIX (verificado con Ulti_proyeccion_R3_subir.xlsx): la celda de decisión
                     # 'Orden de prioridad de entrega' (D6 · LOGÍSTICA) admite que el usuario la cargue
                     # de dos maneras equivalentes en Excel -- eligiendo del desplegable (lista U12:U14,
                     # que guarda "1"/"2"/"3" como TEXTO) o tipeando el dígito directamente (Excel lo
@@ -2397,7 +2397,7 @@ def build_engine_mercado(wb, inputs_idx, prod_out, sens_rows=None, rdos_files=No
                     # cae a "" (que nunca iguala a un slot 1/2/3), preservando el "(sin definir)" para
                     # el caso real de decisión no cargada.
                     f_m = (f'=IF(IFERROR(VALUE({rank_cell["EE.UU."]}),"")={slot},"EE.UU.",'
-                           f'IF(IFERROR(VALUE({rank_cell["China"]}),"")={slot},"China",'
+                           f'IF(IFERROR(VALUE({rank_cell["Asia"]}),"")={slot},"Asia",'
                            f'IF(IFERROR(VALUE({rank_cell["Europa"]}),"")={slot},"Europa","(sin definir)")))')
                     S.apply_cell(ws, row_m, 7 + rn, value=f_m, kind="calculo", align=S.ALIGN_CENTER, size=7)
 
@@ -2656,7 +2656,7 @@ def build_engine_financiero(wb, inputs_idx, prod_out, mkt_out, rdos_files, ronda
     def fx_of(pais, rn):
         if pais == "EE.UU.":
             return "1"
-        dim = "China (RMB)" if pais == "China" else "Europa (EUR)"
+        dim = "Asia (RMB)" if pais == "Asia" else "Europa (EUR)"
         return f"IF(ISNUMBER({iref(inputs_idx,'B. Condiciones','Tipo de cambio (USD por 1 unidad de moneda local)',dim,rn)}),{iref(inputs_idx,'B. Condiciones','Tipo de cambio (USD por 1 unidad de moneda local)',dim,rn)},1)"
 
     def rutas_hacia(pais):
@@ -2681,7 +2681,7 @@ def build_engine_financiero(wb, inputs_idx, prod_out, mkt_out, rdos_files, ronda
         row_import = put("A. P&L país", "Costos de productos importados", pais, "USD")
         row_transp = put("A. P&L país", "Costos de transporte y aranceles", pais, "USD")
         row_nfab = put("A. P&L país", "N° de fábricas operativas (memo)", pais, "fábricas")
-        row_car = put("A. P&L país", "Costos de la característica", pais, "USD")
+        row_car = put("A. P&L país", "Costos de características", pais, "USD")
         row_ginv = put("A. P&L país", "Costos de gestión de inventario", pais, "USD", "CÁLCULO",
                        "Fijo(miles USD, 01_INPUTS)×1000 + Variable(USD/u.)×Σ Inventario final (unidades, _ENGINE_PRODUCCION). "
                        "Da 0 hasta que se carguen los inputs de 01_INPUTS (Condición de Ronda, hoy en blanco).")
@@ -2758,7 +2758,7 @@ def build_engine_financiero(wb, inputs_idx, prod_out, mkt_out, rdos_files, ronda
         country_rows[pais] = cr
     r[0] += 1
 
-    # (rellenado por país; requiere nfab de EE.UU./China para prorratear RRHH y licencias -> loop 2 pasadas)
+    # (rellenado por país; requiere nfab de EE.UU./Asia para prorratear RRHH y licencias -> loop 2 pasadas)
     for pais in PAISES:
         cr = country_rows[pais]
         produce = pais in AREAS
@@ -2884,7 +2884,7 @@ def build_engine_financiero(wb, inputs_idx, prod_out, mkt_out, rdos_files, ronda
     # número de fábricas en cada una de las áreas". Se completa DESPUÉS del loop principal porque
     # necesita las filas 'nfab' de AMBOS países productores.
     nfab_eeuu = country_rows["EE.UU."]["nfab"]
-    nfab_china = country_rows["China"]["nfab"]
+    nfab_china = country_rows["Asia"]["nfab"]
     for pais in AREAS:
         cr = country_rows[pais]
         row_nfab_this = cr["nfab"]
@@ -2931,8 +2931,8 @@ def build_engine_financiero(wb, inputs_idx, prod_out, mkt_out, rdos_files, ronda
 
     # ============ Fase 2, cambio 2: PARÁMETROS CxC/CxP CALIBRADOS POR PAÍS (reemplaza el pool blended GLOBAL de v1.2) ============
     section("PARÁMETROS · CxC/CxP calibrados POR PAÍS (Fase 2 — MISMAS 3 tasas por país que usaba MOTOR_VALIDADO_R2/build_engine_e5.py, calibradas contra RDOS Ronda 1 real; ver 01_INPUTS)")
-    CXC_PCT = {"EE.UU.": 0.0271, "China": 0.0358, "Europa": 0.0385}
-    CXP_PCT = {"EE.UU.": 0.0359, "China": 0.0363, "Europa": 0.0075}
+    CXC_PCT = {"EE.UU.": 0.0271, "Asia": 0.0358, "Europa": 0.0385}
+    CXP_PCT = {"EE.UU.": 0.0359, "Asia": 0.0363, "Europa": 0.0075}
     row_cxc_pct = {}
     row_cxp_pct = {}
     for pais in PAISES:
@@ -2962,19 +2962,19 @@ def build_engine_financiero(wb, inputs_idx, prod_out, mkt_out, rdos_files, ronda
     r[0] += 1
 
     # ============ SECCIÓN C: GLOBAL — Balance resumido (pool único de caja/deuda) ============
-    section("SECCIÓN C · BALANCE GLOBAL (Fase 2: Σ Balance por país -- EE.UU., China, Europa -- ver 'BAL país' en Sección A arriba; ya NO es un pool único simplificado)")
-    g_af = put("C. BAL GLOBAL", "Activo fijo (neto)", "Global", "USD", "OUTPUT", "Σ Activo fijo neto por país (EE.UU.+China; Europa=0).")
-    g_inv = put("C. BAL GLOBAL", "Inventario", "Global", "USD", "OUTPUT", "Σ Inventario FIFO por país (EE.UU.+China; Europa=0).")
+    section("SECCIÓN C · BALANCE GLOBAL (Fase 2: Σ Balance por país -- EE.UU., Asia, Europa -- ver 'BAL país' en Sección A arriba; ya NO es un pool único simplificado)")
+    g_af = put("C. BAL GLOBAL", "Activo fijo (neto)", "Global", "USD", "OUTPUT", "Σ Activo fijo neto por país (EE.UU.+Asia; Europa=0).")
+    g_inv = put("C. BAL GLOBAL", "Inventario", "Global", "USD", "OUTPUT", "Σ Inventario FIFO por país (EE.UU.+Asia; Europa=0).")
     g_cxc = put("C. BAL GLOBAL", "Cuentas por Cobrar", "Global", "USD", "OUTPUT", "Fase 2: Σ CxC por país, cada uno con su propia tasa calibrada (PARAM) -- ya NO una tasa blended única.")
     g_caja = put("C. BAL GLOBAL", "Efectivo y equivalentes", "Global", "USD", "OUTPUT", "Σ Efectivo de cierre por país (Sección D de cada país).")
     g_activos = put("C. BAL GLOBAL", "Activos Totales", "Global", "USD", "OUTPUT")
     g_capsoc = put("C. BAL GLOBAL", "Capital social", "Global", "USD", "OUTPUT", "Apertura + Emisión − Recompra (D8, Casa matriz EE.UU. — único nivel del modelo, ver README).")
     g_nacc = put("C. BAL GLOBAL", "Acciones en circulación al cierre (memo)", "Global", "acciones", "HISTÓRICO/CÁLCULO",
-                 "DATO HISTÓRICO REAL (RDOS): R0=R1=1.625.000.000 acciones (CADIZ no emitió ni recompró en R0/R1). Desde R2: Apertura + (Emisión D8 − Recompra D8, en USD) ÷ Valor de referencia de la acción (Condición, PROXY). Usado para EPS/P-E/Dividend yield.")
+                 "DATO HISTÓRICO REAL (RDOS): R0=R1=1.625.000.000 acciones (ULTI no emitió ni recompró en R0/R1). Desde R2: Apertura + (Emisión D8 − Recompra D8, en USD) ÷ Valor de referencia de la acción (Condición, PROXY). Usado para EPS/P-E/Dividend yield.")
     g_capad = put("C. BAL GLOBAL", "Capital adicional desembolsado", "Global", "USD", "OUTPUT", "Constante (=0, sin regla CESIM que lo modifique en este modelo).")
     g_gan = put("C. BAL GLOBAL", "Ganancias acumuladas", "Global", "USD", "OUTPUT", "Apertura + Beneficio Global de la ronda − Dividendos pagados a accionistas (D8, monto).")
     g_pat = put("C. BAL GLOBAL", "Patrimonio neto", "Global", "USD", "OUTPUT")
-    g_dlp = put("C. BAL GLOBAL", "Deudas a largo plazo", "Global", "USD", "OUTPUT", "Exclusivamente a nivel Casa matriz EE.UU. (manual cap.11, REGLA VERIFICADA) -- Σ por país (China/Europa=0).")
+    g_dlp = put("C. BAL GLOBAL", "Deudas a largo plazo", "Global", "USD", "OUTPUT", "Exclusivamente a nivel Casa matriz EE.UU. (manual cap.11, REGLA VERIFICADA) -- Σ por país (Asia/Europa=0).")
     g_dcp = put("C. BAL GLOBAL", "Deudas a corto plazo (ajuste automático)", "Global", "USD", "OUTPUT", "Fase 2: Σ Deuda CP por país -- REGLA VERIFICADA (manual cap.11), cada país se ajusta a SU PROPIO efectivo mínimo (Condición, USD 2.000.000/país).")
     g_cxp = put("C. BAL GLOBAL", "Cuentas por Pagar", "Global", "USD", "OUTPUT", "Fase 2: Σ CxP por país, cada uno con su propia tasa calibrada (PARAM).")
     g_pasivos = put("C. BAL GLOBAL", "Pasivos Totales", "Global", "USD", "OUTPUT")
@@ -3137,7 +3137,7 @@ def build_engine_financiero(wb, inputs_idx, prod_out, mkt_out, rdos_files, ronda
                 recom = iref(inputs_idx, "D8 · FINANZAS", "Recompra de acciones", "Casa matriz EE.UU.", rn)
                 S.apply_cell(ws, cr["capsoc"], 7 + rn, value=f"={cprev}{cr['capsoc']}+IF(ISNUMBER({emis}),{emis},0)-IF(ISNUMBER({recom}),{recom},0)", kind="calculo", numfmt=S.NUM_MONEY, align=S.ALIGN_RIGHT, size=8)
                 divacc = iref(inputs_idx, "D8 · FINANZAS", "Dividendos pagados a accionistas (monto)", "Casa matriz EE.UU.", rn)
-                div_perc_terms = "+".join(f'IF(ISNUMBER({iref(inputs_idx,"D8 · FINANZAS","Dividendos pagados a casa matriz (filial)",filial,rn)}),{iref(inputs_idx,"D8 · FINANZAS","Dividendos pagados a casa matriz (filial)",filial,rn)},0)' for filial in ("China", "Europa"))
+                div_perc_terms = "+".join(f'IF(ISNUMBER({iref(inputs_idx,"D8 · FINANZAS","Dividendos pagados a casa matriz (filial)",filial,rn)}),{iref(inputs_idx,"D8 · FINANZAS","Dividendos pagados a casa matriz (filial)",filial,rn)},0)' for filial in ("Asia", "Europa"))
                 S.apply_cell(ws, cr["ga"], 7 + rn, value=f"={cprev}{cr['ga']}+{c}{cr['ben']}-IF(ISNUMBER({divacc}),{divacc},0)+({div_perc_terms})", kind="calculo", numfmt=S.NUM_MONEY, align=S.ALIGN_RIGHT, size=8)
                 vardlp = iref(inputs_idx, "D8 · FINANZAS", "Variación de deuda de largo plazo", "Casa matriz EE.UU.", rn)
                 S.apply_cell(ws, cr["dlp"], 7 + rn, value=f"={cprev}{cr['dlp']}+IF(ISNUMBER({vardlp}),{vardlp},0)", kind="calculo", numfmt=S.NUM_MONEY, align=S.ALIGN_RIGHT, size=8)
@@ -3387,10 +3387,10 @@ def build_estados_proyectados(wb, glob, inputs_idx, country_rows, rondas_reales=
         for rn in RONDAS:
             g_ref = cref(ENGINE_FIN_SHEET, glob[key_global], rn)
             if combo:
-                us_ref, cn_ref, eu_ref = combo("EE.UU.", rn), combo("China", rn), combo("Europa", rn)
+                us_ref, cn_ref, eu_ref = combo("EE.UU.", rn), combo("Asia", rn), combo("Europa", rn)
             else:
                 us_ref = cref(ENGINE_FIN_SHEET, country_rows["EE.UU."][key_country], rn)
-                cn_ref = cref(ENGINE_FIN_SHEET, country_rows["China"][key_country], rn)
+                cn_ref = cref(ENGINE_FIN_SHEET, country_rows["Asia"][key_country], rn)
                 eu_ref = cref(ENGINE_FIN_SHEET, country_rows["Europa"][key_country], rn)
             S.apply_cell(ws, r, 7 + rn, value=guarded(rn, choose_formula(g_ref, us_ref, cn_ref, eu_ref)), kind="link", numfmt=numfmt, align=S.ALIGN_RIGHT, bold=bold, size=9)
         row_principal = r
@@ -3536,9 +3536,9 @@ def build_ratios(wb, glob, inputs_idx, cond, decisiones, prod_out, mkt_out, rond
              "valuación de CESIM (no publicado), y así debe leerse: PROXY, no una réplica de la fórmula oficial.")
     sec("OPERATIVO — CAPACIDAD, INVENTARIO, DEMANDA")
     row_util_us = newrow("Utilización de capacidad — EE.UU.", "%")
-    row_util_cn = newrow("Utilización de capacidad — China", "%")
-    row_insatisfecha = newrow("Demanda insatisfecha CADIZ (total, todas tech/mercados)", "u.")
-    row_cuota_prom = newrow("Cuota de mercado CADIZ (ponderada por volumen, 3 mercados)", "%")
+    row_util_cn = newrow("Utilización de capacidad — Asia", "%")
+    row_insatisfecha = newrow("Demanda insatisfecha ULTI (total, todas tech/mercados)", "u.")
+    row_cuota_prom = newrow("Cuota de mercado ULTI (ponderada por volumen, 3 mercados)", "%")
     sec("POR VEHÍCULO")
     row_ing_veh = newrow("Ingresos por vehículo vendido", "USD/u.")
     row_ebitda_veh = newrow("EBITDA por vehículo vendido", "USD/u.")
@@ -3625,7 +3625,7 @@ def build_ratios(wb, glob, inputs_idx, cond, decisiones, prod_out, mkt_out, rond
         cap_us_ref = cref(ENGINE_PROD_SHEET, prod_out["cap"]["EE.UU."], rn)
         prodtot_us_ref = cref(ENGINE_PROD_SHEET, prod_out["prodtot"]["EE.UU."], rn) if "prodtot" in prod_out else None
         util_us_ref = cref(ENGINE_PROD_SHEET, prod_out["util"]["EE.UU."], rn)
-        util_cn_ref = cref(ENGINE_PROD_SHEET, prod_out["util"]["China"], rn)
+        util_cn_ref = cref(ENGINE_PROD_SHEET, prod_out["util"]["Asia"], rn)
         S.apply_cell(ws, row_util_us, 7 + rn, value=guarded(rn, util_us_ref), kind="link", numfmt=S.NUM_PCT1, align=S.ALIGN_RIGHT, size=9)
         S.apply_cell(ws, row_util_cn, 7 + rn, value=guarded(rn, util_cn_ref), kind="link", numfmt=S.NUM_PCT1, align=S.ALIGN_RIGHT, size=9)
 
@@ -3634,14 +3634,14 @@ def build_ratios(wb, glob, inputs_idx, cond, decisiones, prod_out, mkt_out, rond
 
         # BUG REPORTADO Y CORREGIDO (pendiente desde la Adenda 12 de Integracion_Excel_Web_Control_
         # Gestion.md): la versión anterior promediaba los 12 casilleros (3 mercados x 4 tecnologías)
-        # con el MISMO peso, incluyendo Eléctrico/Hidrógeno -- donde CADIZ pone 0 a propósito porque
+        # con el MISMO peso, incluyendo Tec 3/Tec 4 -- donde ULTI pone 0 a propósito porque
         # no compite ahí. Sumar esos 6 ceros al promedio (y contarlos en el denominador, porque
         # ISNUMBER(0) es VERDADERO) diluía el resultado -- daba ~4,6% en Ronda 2 en vez de un número
         # representativo (confirmado contra Ronda 1 real: CESIM reporta 18,03% ponderado por
         # ventas). Corregido para ponderar por volumen, misma convención que usa CESIM en el dato
-        # REAL que publica: la cuota de CADIZ de cada país (suma de sus 4 celdas de tecnología, ya
+        # REAL que publica: la cuota de ULTI de cada país (suma de sus 4 celdas de tecnología, ya
         # expresada como % del mercado TOTAL de ese país) se pondera por el tamaño de mercado de ese
-        # país (Sección A1 del motor) -- el resultado es exactamente "volumen que CADIZ proyecta
+        # país (Sección A1 del motor) -- el resultado es exactamente "volumen que ULTI proyecta
         # vender en los 3 mercados / volumen total de los 3 mercados", no un promedio simple de
         # celdas sueltas.
         cuota_terms_todas = []
@@ -3726,10 +3726,10 @@ def build_control_modelo(wb, inputs_idx, prod_out, mkt_out, glob, cond, decision
 
     sec("A · IDENTIDADES CONTABLES Y DE CONSOLIDACIÓN (Fase 2: por país Y Global)")
     row_bal_us = ctrl_row("Balance: Activo Total = Patrimonio + Pasivo — EE.UU.")
-    row_bal_cn = ctrl_row("Balance: Activo Total = Patrimonio + Pasivo — China")
+    row_bal_cn = ctrl_row("Balance: Activo Total = Patrimonio + Pasivo — Asia")
     row_bal_eu = ctrl_row("Balance: Activo Total = Patrimonio + Pasivo — Europa")
     row_bal = ctrl_row("Balance: Activo Total = Patrimonio + Pasivo (Global = Σ países)", "Fase 2: el Global ahora es la SUMA de los 3 Balances por país (arriba), 100% consistentes con RDOS en R0/R1 -- esto corrige la inconsistencia heredada de v1.2 (~1.508,8 MM USD en R1). Ver Informe_V2.md.")
-    row_prest_ctrl = ctrl_row("Préstamos internos: Σ EE.UU.+China+Europa = 0", "REGLA VERIFICADA: los préstamos internos entre países (D8) deben netear a 0 exactamente cada ronda (Fase 2: ahora trackeados explícitamente por país, no solo colapsados a nivel Global).")
+    row_prest_ctrl = ctrl_row("Préstamos internos: Σ EE.UU.+Asia+Europa = 0", "REGLA VERIFICADA: los préstamos internos entre países (D8) deben netear a 0 exactamente cada ronda (Fase 2: ahora trackeados explícitamente por país, no solo colapsados a nivel Global).")
     row_cf = ctrl_row("Cash Flow: Efectivo cierre (CF) = Efectivo (Balance)")
     row_cons = ctrl_row("Consolidación: Beneficio Global = Σ Beneficio países")
     # -------------------------------------------------------------------------------------------
@@ -3759,7 +3759,7 @@ def build_control_modelo(wb, inputs_idx, prod_out, mkt_out, glob, cond, decision
             f'"ADVERTENCIA — diferencia heredada R1 ≈ USD 1.508,8 M (v1.2)","ERROR"))'
         )
 
-    bal_rows_pais = {"EE.UU.": row_bal_us, "China": row_bal_cn, "Europa": row_bal_eu}
+    bal_rows_pais = {"EE.UU.": row_bal_us, "Asia": row_bal_cn, "Europa": row_bal_eu}
     for rn in RONDAS:
         c = col(rn)
         if country_rows:
@@ -3823,8 +3823,8 @@ def build_control_modelo(wb, inputs_idx, prod_out, mkt_out, glob, cond, decision
         S.apply_cell(ws, row_maxtech_mercado, 7 + rn, value="NO VERIFICADO", kind="alerta", align=S.ALIGN_CENTER, size=8, italic=True)
     for rn in range(2, 13):
         c = col(rn)
-        # Solo se exige carga para TECH_ACTIVAS (Combustión/Híbrido): Eléctrico/Hidrógeno aún no
-        # comercializados por CADIZ, sus celdas quedan en blanco legítimamente (no es un error).
+        # Solo se exige carga para TECH_ACTIVAS (Tec 1/Tec 2): Tec 3/Tec 4 aún no
+        # comercializados por ULTI, sus celdas quedan en blanco legítimamente (no es un error).
         d1_terms = ([iref(inputs_idx, "D1a · MIX INDUSTRIA", "Mix de Industria (TAM)", f"{m} / {t}", rn) for m in MERCADOS for t in TECH_ACTIVAS] +
                     [iref(inputs_idx, "D1 · DEMANDA", "Cuota de mercado objetivo SOBRE LA TECNOLOGÍA", f"{m} / {t}", rn) for m in MERCADOS for t in TECH_ACTIVAS])
         d5_terms = [iref(inputs_idx, "D5 · MARKETING", "Precio de venta", f"{m} / {t}", rn) for m in MERCADOS for t in TECH_ACTIVAS]
@@ -3876,9 +3876,9 @@ def build_control_modelo(wb, inputs_idx, prod_out, mkt_out, glob, cond, decision
 
 # ======================================================================================
 # 05_HISTORICO_EQUIPOS — histórico tidy (Ronda 0/1, los 7 equipos) migrado de
-# MOTOR_VALIDADO_R2.xlsx / 24_HISTORICO_RONDAS + append de CADIZ Escenario A Ronda 2 (PLAN)
+# MOTOR_VALIDADO_R2.xlsx / 24_HISTORICO_RONDAS + append de ULTI Escenario A Ronda 2 (PLAN)
 # ======================================================================================
-EQUIPOS = ["CADIZ", "CEOS", "CHIEF", "CLAVE", "CUORE", "FOCUS", "TOKIO"]
+EQUIPOS = ["LUCKY", "MECHA", "PRELA", "NEXUS", "ULTI", "NOSRE", "NODO"]
 
 
 def _parse_seccion(sec):
@@ -3886,28 +3886,28 @@ def _parse_seccion(sec):
     region = None
     tipo_parts = []
     for p in parts:
-        if p in ("China", "EE.UU.", "Europa", "Global"):
+        if p in ("Asia", "EE.UU.", "Europa", "Global"):
             region = p
         elif p in ("miles USD", "%"):
             continue
         else:
             tipo_parts.append(p)
     tipo = ", ".join(tipo_parts)
-    for pref in ("China ", "EE.UU. ", "Europa "):
+    for pref in ("Asia ", "EE.UU. ", "Europa "):
         if tipo.startswith(pref):
             region = pref.strip()
             tipo = tipo[len(pref):]
     if region is None and "global" in tipo.lower():
         region = "Global"
     if region is None and "casa matriz" in tipo.lower():
-        # VERIFICADO por dato: "Efectivo 31.12." de 'Flujo de efectivo de casa matriz' (R0, CADIZ)
+        # VERIFICADO por dato: "Efectivo 31.12." de 'Flujo de efectivo de casa matriz' (R0, ULTI)
         # = 9.274.082,79, IDÉNTICO a 'Hoja de Balance, miles USD, EE.UU.' — Efectivo y equivalentes
-        # (mismo valor), NO al Global consolidado (10.817.319,05 = suma EE.UU.+China+Europa). La
+        # (mismo valor), NO al Global consolidado (10.817.319,05 = suma EE.UU.+Asia+Europa). La
         # "casa matriz" en 24_HISTORICO_RONDAS es la entidad EE.UU. (solo esa filial), no el
         # consolidado de 3 países -- región EE.UU. es correcta, no un supuesto.
         region = "EE.UU."
     if region is None and tipo.strip() == "Indicadores Financieros Claves":
-        # VERIFICADO por dato: "Rentabilidad de las ventas (ROS)" (R0, CADIZ) = 4.410388%% =
+        # VERIFICADO por dato: "Rentabilidad de las ventas (ROS)" (R0, ULTI) = 4.410388%% =
         # Beneficio de la ronda Global / Ingresos por ventas Global (1.741.617,98 / 39.489.000),
         # y "Beneficio operativo antes de depreciación ( EBITDA )" = 10.512170% = EBITDA Global /
         # Ingresos Global (4.151.150,78 / 39.489.000). Sección sin país explícito = GLOBAL.
@@ -3953,7 +3953,7 @@ CANON_GLOBAL_MAP = {
     ("Indicadores Financieros Claves", "Rentabilidad del capital empleado (ROCE)"): "ROCE",
     ("Indicadores Financieros Claves", "Ganancias por acción (EPS), USD"): "EPS",
 }
-# Estados de flujo de efectivo (casa matriz=EE.UU., y regionales China/Europa): el rubro fuente
+# Estados de flujo de efectivo (casa matriz=EE.UU., y regionales Asia/Europa): el rubro fuente
 # repite el texto "Total" DOS VECES por sección/ronda (subtotal de operación y subtotal de
 # financiación) -- verificado con datos R0 (fila 76 vs 85 de 24_HISTORICO_RONDAS): son valores
 # DISTINTOS bajo el mismo (Sección, Rubro), lo que ya rompía el contrato de identificación por
@@ -3973,8 +3973,8 @@ def _values_equal(a, b):
 def build_historico_equipos(wb, rdos_files, glob, ratios_rows, prod_out, mkt_out, inputs_idx):
     ws = wb.create_sheet(HIST_SHEET)
     S.set_col_widths(ws, [8, 10, 10, 12, 12, 46, 20, 12])
-    S.style_title_row(ws, 1, "05_HISTORICO_EQUIPOS — Histórico tidy (7 equipos, parseado directo de los RDOS de cada ronda jugada -- rdos_parser.py) + PLAN/SIM CADIZ Ronda 2-12 (rondas activas)", 8)
-    S.apply_cell(ws, 2, 1, value="DATO HISTÓRICO REAL para Ronda 0/1 (Estado=REAL, todos los equipos); Tecnología=NA salvo en 'Cuota de mercado' (dato real desagregado por tecnología, ver README) -- el resto de secciones del histórico mezcla varias tecnologías/sub-tablas sin columna propia y NO se reconstruye por inferencia (ver README 'Limitaciones conocidas'); filas con misma clave (ronda,equipo,región,métrica) pero valor distinto quedan marcadas '(variante N)' en vez de colisionar en silencio. Región=NA cuando la fila fuente no identifica un país/Global explícito (no se inventa). Filas PLAN/SIM (Equipo=CADIZ, Ronda 2-12) se generan SOLO para rondas con RONDA_ACTIVA=VERDADERO (Cambio 2, v1.2) y están LINKEADAS por fórmula al motor de este workbook y a 01_INPUTS (Estado); metric/region/technology siguen la misma convención canónica que REAL (ver README).", kind="plain", align=S.ALIGN_LEFT_WRAP, size=8, italic=True)
+    S.style_title_row(ws, 1, "05_HISTORICO_EQUIPOS — Histórico tidy (7 equipos, parseado directo de los RDOS de cada ronda jugada -- rdos_parser.py) + PLAN/SIM ULTI Ronda 2-12 (rondas activas)", 8)
+    S.apply_cell(ws, 2, 1, value="DATO HISTÓRICO REAL para Ronda 0/1 (Estado=REAL, todos los equipos); Tecnología=NA salvo en 'Cuota de mercado' (dato real desagregado por tecnología, ver README) -- el resto de secciones del histórico mezcla varias tecnologías/sub-tablas sin columna propia y NO se reconstruye por inferencia (ver README 'Limitaciones conocidas'); filas con misma clave (ronda,equipo,región,métrica) pero valor distinto quedan marcadas '(variante N)' en vez de colisionar en silencio. Región=NA cuando la fila fuente no identifica un país/Global explícito (no se inventa). Filas PLAN/SIM (Equipo=ULTI, Ronda 2-12) se generan SOLO para rondas con RONDA_ACTIVA=VERDADERO (Cambio 2, v1.2) y están LINKEADAS por fórmula al motor de este workbook y a 01_INPUTS (Estado); metric/region/technology siguen la misma convención canónica que REAL (ver README).", kind="plain", align=S.ALIGN_LEFT_WRAP, size=8, italic=True)
     ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=8)
     ws.row_dimensions[2].height = 28
     header_row = 4
@@ -4021,7 +4021,7 @@ def build_historico_equipos(wb, rdos_files, glob, ratios_rows, prod_out, mkt_out
                 metrica = "Total actividades de inversión (CFI)"
             elif rubro in TECNOLOGIAS and "cuota" in tipo_low and "mercado" in tipo_low:
                 # "Cuotas de mercado globales, %" / "{Región} cuotas de mercado, %": el rubro fuente
-                # YA ES la tecnología (Combustión/Híbrido/Eléctrico/Hidrógeno) -- dato real desagregado
+                # YA ES la tecnología (Tec 1/Tec 2/Tec 3/Tec 4) -- dato real desagregado
                 # por tecnología que existía pero no se exportaba en la columna Tecnología. Verificado
                 # limpio: sin filas duplicadas (round,región,rubro) en esta sección (a diferencia de
                 # otras secciones del histórico, ver README "Limitaciones conocidas").
@@ -4067,7 +4067,7 @@ def build_historico_equipos(wb, rdos_files, glob, ratios_rows, prod_out, mkt_out
           f"filas de Cuota de mercado con Tecnología poblada: {n_tech_cuota}")
 
     # -------------------------------------------------------------------------------------------
-    # Cambio 2 (v1.2): generalización de la sección PLAN/SIM CADIZ de R2 (único caso hardcodeado
+    # Cambio 2 (v1.2): generalización de la sección PLAN/SIM ULTI de R2 (único caso hardcodeado
     # en v1.1) a un LOOP genérico R2-R12. R0/R1 (histórico REAL) no pasan por este bloque -- ya
     # fueron migradas más arriba, sin cambios.
     #
@@ -4093,7 +4093,7 @@ def build_historico_equipos(wb, rdos_files, glob, ratios_rows, prod_out, mkt_out
     # -------------------------------------------------------------------------------------------
     estado_row = inputs_idx["A. Identificación||Estado||-"]
     escenario_row = inputs_idx["A. Identificación||Escenario||-"]
-    cuota_check_row = inputs_idx["D1 · DEMANDA||Cuota de mercado objetivo SOBRE LA TECNOLOGÍA||EE.UU. / Combustión"]
+    cuota_check_row = inputs_idx["D1 · DEMANDA||Cuota de mercado objetivo SOBRE LA TECNOLOGÍA||EE.UU. / Tec 1"]
 
     def _ronda_activa_buildtime(rn_chk):
         estado_val = ws_in.cell(row=estado_row, column=7 + rn_chk).value
@@ -4112,7 +4112,7 @@ def build_historico_equipos(wb, rdos_files, glob, ratios_rows, prod_out, mkt_out
             # rn>=2 (rondas_reales fijo a {0,1}), pero ahora que Estado(rn)="REAL" generaliza a
             # cualquier ronda con RDOS, sin este guard _ronda_activa_buildtime(rn) daría VERDADERO
             # también acá (Estado="REAL" ∈ {PLAN,SIM,REAL}) y se escribiría una fila DUPLICADA
-            # (misma clave ronda/CADIZ/Global/métrica) con fórmulas PLAN en vez del valor REAL ya
+            # (misma clave ronda/ULTI/Global/métrica) con fórmulas PLAN en vez del valor REAL ya
             # migrado. Se salta explícitamente.
             continue
         if rn > n_next_hist and not _ronda_activa_buildtime(rn):
@@ -4126,13 +4126,13 @@ def build_historico_equipos(wb, rdos_files, glob, ratios_rows, prod_out, mkt_out
         esc_val = ws_in.cell(row=escenario_row, column=7 + rn).value
         esc_label = esc_val if esc_val not in (None, "") else "(sin escenario)"
         r += 1
-        S.style_section_row(ws, r, f"CADIZ — ESCENARIO {esc_label}, RONDA {rn} ({estado_val} — linkeado por fórmula a _ENGINE_FINANCIERO / _ENGINE_PRODUCCION / _ENGINE_MERCADO / 03_RATIOS / 01_INPUTS de este workbook)", 8)
+        S.style_section_row(ws, r, f"ULTI — ESCENARIO {esc_label}, RONDA {rn} ({estado_val} — linkeado por fórmula a _ENGINE_FINANCIERO / _ENGINE_PRODUCCION / _ENGINE_MERCADO / 03_RATIOS / 01_INPUTS de este workbook)", 8)
         r += 1
 
         def plan_row(metrica, ref, unidad, region="Global", tech="NA"):
             nonlocal r
             S.apply_cell(ws, r, 1, value=rn, kind="plain", align=S.ALIGN_CENTER, size=8)
-            S.apply_cell(ws, r, 2, value="CADIZ", kind="plain", align=S.ALIGN_CENTER, size=8)
+            S.apply_cell(ws, r, 2, value="ULTI", kind="plain", align=S.ALIGN_CENTER, size=8)
             # [Fix 2] status/value envueltos en IF(RONDA_ACTIVA(rn),...,"") -- fórmula VIVA, se
             # recalcula sola apenas 01_INPUTS tenga las decisiones cargadas (no requiere regenerar
             # el shell). Antes de cargar decisiones, RONDA_ACTIVA(rn) es FALSO y ambas celdas quedan
@@ -4161,7 +4161,7 @@ def build_historico_equipos(wb, rdos_files, glob, ratios_rows, prod_out, mkt_out
 
         # NOTA UNIDADES: 03_RATIOS guarda los % como fracción (0.105 = 10,5%, formato de celda '0.0%').
         # 24_HISTORICO_RONDAS (REAL) guarda TODOS sus valores en "%" ya multiplicados x100 (verificado:
-        # p.ej. 'Cuotas de mercado globales, %' — Combustión R0 = 14.2857142857143, no 0.142857...; ROE
+        # p.ej. 'Cuotas de mercado globales, %' — Tec 1 R0 = 14.2857142857143, no 0.142857...; ROE
         # de 'Indicadores Financieros Claves' R0 = 19.07, no 0.1907). Para que un mismo metric="ROE" (u
         # otro ratio en %) sea numéricamente comparable entre status=REAL y status=PLAN, TODO ratio "%"
         # o "p.p." que va a 05_HISTORICO_EQUIPOS/DATA_EXPORT se multiplica x100 aquí (silo NUEVO, no
@@ -4171,8 +4171,8 @@ def build_historico_equipos(wb, rdos_files, glob, ratios_rows, prod_out, mkt_out
             ("ROE", "roe", "%", 100), ("ROCE", "roce", "%", 100),
             ("ROCE − WACC", "roce_wacc", "p.p.", 100), ("EPS", "eps", "USD/acción", 1), ("FCF", "fcf", "USD", 1),
             ("Payout ratio", "payout", "%", 100),
-            ("Demanda insatisfecha CADIZ (total)", "insatisfecha", "u.", 1),
-            ("Cuota de mercado CADIZ (ponderada por volumen)", "cuota_prom", "%", 100),
+            ("Demanda insatisfecha ULTI (total)", "insatisfecha", "u.", 1),
+            ("Cuota de mercado ULTI (ponderada por volumen)", "cuota_prom", "%", 100),
             ("Retorno total acumulado del accionista (PROXY)", "retorno_acum", "%", 100),
         ]:
             ref = cref(RATIOS_SHEET, ratios_rows[key], rn)
@@ -4184,12 +4184,12 @@ def build_historico_equipos(wb, rdos_files, glob, ratios_rows, prod_out, mkt_out
             plan_row(label, f_ref, unidad)
         # Región va en la columna Región, NO embebida en el texto de la métrica (contrato DATA_EXPORT).
         plan_row("Utilización de capacidad", f"{cref(RATIOS_SHEET, ratios_rows['util_us'], rn)}*100", "%", region="EE.UU.")
-        plan_row("Utilización de capacidad", f"{cref(RATIOS_SHEET, ratios_rows['util_cn'], rn)}*100", "%", region="China")
+        plan_row("Utilización de capacidad", f"{cref(RATIOS_SHEET, ratios_rows['util_cn'], rn)}*100", "%", region="Asia")
         # Capacidad operativa (cierre de ronda), unidades absolutas, por área (Adenda 11 hotfix): se
         # exporta para que la web pueda reconstruir la "Utilización de capacidad" REAL (el RDOS no
         # publica un único % por área -- lo publica desglosado por tecnología, ver metric_crosswalk.py)
         # dividiendo Producción interna real (real, sumada por tecnología) / esta capacidad, en vez de
-        # asumir una constante fija a mano en la web. Si CADIZ invierte/desinvierte capacidad (D2) en
+        # asumir una constante fija a mano en la web. Si ULTI invierte/desinvierte capacidad (D2) en
         # una ronda futura, este número ya viene actualizado desde el motor -- no hay que tocar la web.
         for area in AREAS:
             plan_row("Capacidad operativa", cref(ENGINE_PROD_SHEET, prod_out["cap"][area], rn), "u.", region=area)
@@ -4197,7 +4197,7 @@ def build_historico_equipos(wb, rdos_files, glob, ratios_rows, prod_out, mkt_out
         # Precio / Promoción / Ventas efectivas por (mercado, tecnología) y Costo unitario por
         # (área, tecnología) -- Adenda 12 hotfix: se exportan para la "Comparativa Plan vs. Real"
         # (waterfall de Ingresos por Precio/Volumen/Mix en Resultados, GAP de fabricación en
-        # Operaciones). Ya se calculaban internamente (D5·MARKETING es una DECISIÓN CADIZ, _ENGINE_
+        # Operaciones). Ya se calculaban internamente (D5·MARKETING es una DECISIÓN ULTI, _ENGINE_
         # PRODUCCION/_ENGINE_MERCADO ya las computan) -- esto solo las manda a DATA_EXPORT, no cambia
         # ninguna fórmula existente. Moneda: Precio de venta queda en la moneda nativa del mercado
         # (MONEDA_MERCADO) igual que el RDOS real (que tampoco convierte) -- comparable sin FX.
@@ -4211,7 +4211,7 @@ def build_historico_equipos(wb, rdos_files, glob, ratios_rows, prod_out, mkt_out
                 # unidad "ratio" -- NO se multiplica x100 (a diferencia de los ratios calculados del
                 # motor migrados vía 05_HISTORICO_EQUIPOS/_RATIO_METRICS_PLAN) porque este valor sale
                 # directo de 01_INPUTS, no de ese camino de canonicalización.
-                plan_row("Cuota de mercado objetivo CADIZ", cuota_obj_ref, "ratio", region=mercado, tech=tech)
+                plan_row("Cuota de mercado objetivo ULTI", cuota_obj_ref, "ratio", region=mercado, tech=tech)
                 promo_ref = iref(inputs_idx, "D5 · MARKETING", "Presupuesto de promoción", dim, rn)
                 plan_row("Presupuesto de promoción", promo_ref, "USD", region=mercado, tech=tech)
                 plan_row("Ventas efectivas (mercado)", cref(ENGINE_MKT_SHEET, mkt_out["vef"][(mercado, tech)], rn),
@@ -4231,9 +4231,9 @@ def build_historico_equipos(wb, rdos_files, glob, ratios_rows, prod_out, mkt_out
             for t in TECNOLOGIAS:
                 plan_row("Ventas totales (unidades)", cref(ENGINE_PROD_SHEET, prod_out["ventas_u"][(area, t)], rn), "u.", region=area, tech=t)
         for m in MERCADOS:
-            plan_row("Demanda estimada CADIZ (unidades)", "+".join(cref(ENGINE_MKT_SHEET, mkt_out["demanda"][(m, t)], rn) for t in TECNOLOGIAS), "u.", region=m)
+            plan_row("Demanda estimada ULTI (unidades)", "+".join(cref(ENGINE_MKT_SHEET, mkt_out["demanda"][(m, t)], rn) for t in TECNOLOGIAS), "u.", region=m)
             for t in TECNOLOGIAS:
-                plan_row("Demanda estimada CADIZ (unidades)", cref(ENGINE_MKT_SHEET, mkt_out["demanda"][(m, t)], rn), "u.", region=m, tech=t)
+                plan_row("Demanda estimada ULTI (unidades)", cref(ENGINE_MKT_SHEET, mkt_out["demanda"][(m, t)], rn), "u.", region=m, tech=t)
 
     ws.auto_filter.ref = f"A{header_row}:H{max(r - 1, header_row)}"
     ws.freeze_panes = f"A{header_row+1}"
@@ -4242,7 +4242,7 @@ def build_historico_equipos(wb, rdos_files, glob, ratios_rows, prod_out, mkt_out
 
 # ======================================================================================
 # DATA_EXPORT (oculta) — contrato tabular para una futura app Python. Espeja 05_HISTORICO_EQUIPOS
-# fila a fila por fórmula (histórico y PLAN CADIZ ya vienen correctamente sembrados/linkeados allí).
+# fila a fila por fórmula (histórico y PLAN ULTI ya vienen correctamente sembrados/linkeados allí).
 # ======================================================================================
 # ---------------------------------------------------------------------------------------------
 # Cambio 3 (v1.1) -- CONVENCIÓN CANÓNICA DE UNIDADES en DATA_EXPORT (ver README, tabla completa).
@@ -4273,10 +4273,10 @@ _UNIT_CANON_MAP = {
 # decimal puro hay que dividir /100 en vez de solo copiar. Metrics PLAN de unidades físicas ("u.")
 # no requieren cambio de valor, solo de etiqueta ("u." -> "units").
 _RATIO_METRICS_PLAN = {"Margen EBITDA", "ROS", "ROE", "ROCE", "ROCE − WACC", "Payout ratio",
-                        "Cuota de mercado CADIZ (ponderada por volumen)", "Utilización de capacidad",
+                        "Cuota de mercado ULTI (ponderada por volumen)", "Utilización de capacidad",
                         "Retorno total acumulado del accionista (PROXY)"}
-_UNITS_METRICS_PLAN = {"Demanda insatisfecha CADIZ (total)", "Ventas totales (unidades)",
-                        "Demanda estimada CADIZ (unidades)", "Capacidad operativa",
+_UNITS_METRICS_PLAN = {"Demanda insatisfecha ULTI (total)", "Ventas totales (unidades)",
+                        "Demanda estimada ULTI (unidades)", "Capacidad operativa",
                         "Ventas efectivas (mercado)"}
 
 _VARIANT_RE = re.compile(r"^(.*)\s\(variante \d+\)$")
@@ -4335,14 +4335,14 @@ def build_data_export(wb, ws_hist, header_row, ids, plan_start):
         # Cambio 2 (v1.2): la clasificación PLAN/SIM vs. histórico/competidores YA NO se decide
         # leyendo el texto de la columna Estado de 05_HISTORICO_EQUIPOS (esa columna ahora es una
         # fórmula linkeada a 01_INPUTS, no el texto fijo "PLAN" -- ver build_historico_equipos), sino
-        # por RANGO DE FILAS: toda fila desde plan_start en adelante es CADIZ PLAN/SIM (generada por
+        # por RANGO DE FILAS: toda fila desde plan_start en adelante es ULTI PLAN/SIM (generada por
         # el loop genérico R2-R12), y toda fila anterior es histórico/competidores migrado de
         # MOTOR_VALIDADO_R2 (R0/R1, sin cambios). Si ninguna ronda R2-R12 está activa, plan_start
         # queda en una fila posterior a la última escrita y esta rama nunca se ejecuta -- 0 filas
         # PLAN, tal como exige el contrato.
         es_plan = src_row >= plan_start
         if es_plan:
-            # CADIZ Plan/Sim: LINKEADO POR FÓRMULA (no texto estático) -- 05_HISTORICO ya está
+            # ULTI Plan/Sim: LINKEADO POR FÓRMULA (no texto estático) -- 05_HISTORICO ya está
             # linkeado al motor, así que esta fórmula queda linkeada transitivamente al motor.
             # El número de ronda de esta fila específica (columna A de 05_HISTORICO_EQUIPOS) ya se
             # conoce en Python (se escribió como valor literal en build_historico_equipos, dentro
@@ -4362,7 +4362,7 @@ def build_data_export(wb, ws_hist, header_row, ids, plan_start):
             # ya en USD absoluto, EPS ya en USD/acción) se deja como link directo sin cambios.
             if metrica_plan in _RATIO_METRICS_PLAN:
                 # Bug real, corregido (mismo motivo que el IFERROR agregado en 05_HISTORICO_EQUIPOS/
-                # PLAN/SIM CADIZ): si la celda origen viene en blanco ("" de un IFERROR previo, p.ej.
+                # PLAN/SIM ULTI): si la celda origen viene en blanco ("" de un IFERROR previo, p.ej.
                 # Ingresos=0 en una ronda con decisiones incompletas), dividir "" /100 da #VALUE! en
                 # vez de propagar el blank -- se envuelve en IFERROR para que el blank se propague.
                 S.apply_cell(ws, out_row, 8, value=f"=IFERROR('{HIST_SHEET}'!G{src_row}/100,\"\")", kind="link", numfmt='0.0000', align=S.ALIGN_RIGHT, size=8)
@@ -4416,7 +4416,7 @@ def build_data_export(wb, ws_hist, header_row, ids, plan_start):
 
 def _detectar_ronda_desde_titulo(path):
     """Respaldo de detectar_ronda_desde_nombre() para cuando el nombre del ARCHIVO no dice 'rondaN'
-    (Bug real, corregido -- descubierto contra el repo real de CADIZ: sus RDOS oficiales están
+    (Bug real, corregido -- descubierto contra el repo real de ULTI: sus RDOS oficiales están
     nombrados 'results-r01.xls', etc., que no matchea ningún patrón de nombre razonable). CESIM
     siempre exporta el RDOS con la hoja 'Results' titulada 'Ronda N' en la celda superior izquierda
     (A1) -- mismo criterio que usaba el viejo flujo de carga manual (file_uploader) de app.py antes
@@ -4440,7 +4440,7 @@ def _detectar_ronda_desde_titulo(path):
 
 def descubrir_rdos_oficiales(base_dir):
     """Escanea base_dir de forma RECURSIVA (cualquier subcarpeta debajo, ej. 'data/raw/practicas/
-    oficial/' -- el repo real de CADIZ tiene esta anidación un poco rara, y no hace falta forzar una
+    oficial/' -- el repo real de ULTI tiene esta anidación un poco rara, y no hace falta forzar una
     reorganización del repo para que este descubrimiento funcione) buscando RDOS oficiales (.xls/
     .xlsx) y arma {ronda_int: path}. Detecta la ronda en dos pasos: primero por el NOMBRE del archivo
     (detectar_ronda_desde_nombre -- 'ronda0.xlsx', 'Ronda_2.xls', 'RDOS RONDA 3.xls'), y si el nombre
@@ -4472,11 +4472,11 @@ def descubrir_rdos_oficiales(base_dir):
     return out
 
 
-_PROYECCION_FILENAME_RE = re.compile(r"^Cadiz_proyeccion_R(\d+)\.xlsx?$", re.IGNORECASE)
+_PROYECCION_FILENAME_RE = re.compile(r"^Ulti_proyeccion_R(\d+)\.xlsx?$", re.IGNORECASE)
 
 
 def descubrir_ultima_proyeccion(dir_decisiones="data/decisiones"):
-    """Escanea dir_decisiones (p.ej. 'data/decisiones/') buscando archivos 'Cadiz_proyeccion_R{N}.xlsx'
+    """Escanea dir_decisiones (p.ej. 'data/decisiones/') buscando archivos 'Ulti_proyeccion_R{N}.xlsx'
     y devuelve el path del de N más alto -- ese es siempre el más actual (contiene todo el histórico
     REAL ya migrado + la proyección PLAN de la ronda en curso + los planes congelados de rondas
     previas en DATA_EXPORT, ver extraer_plan_congelado/inyectar_plan_congelado), así que no hace
@@ -4484,15 +4484,15 @@ def descubrir_ultima_proyeccion(dir_decisiones="data/decisiones"):
 
     Bug real, corregido (Fase 4 -- integración repo/tablero): antes de esta función, el tablero web
     (app.py -> gap_analysis.load_proyeccion() -> export_proyeccion.DEFAULT_EXCEL) leía un archivo
-    DISTINTO y completamente desacoplado de esta arquitectura -- 'CADIZ_Gestion_v2.xlsx' en la raíz
+    DISTINTO y completamente desacoplado de esta arquitectura -- 'ULTI_Gestion_v2.xlsx' en la raíz
     del repo, que el usuario tenía que reemplazar A MANO con el mismo nombre fijo cada vez. Subir
-    'Cadiz_proyeccion_R3.xlsx' a data/decisiones/ (el flujo que pide esta arquitectura) no tenía
-    ningún efecto sobre el tablero, que seguía mostrando lo último que hubiera en CADIZ_Gestion_v2.xlsx
+    'Ulti_proyeccion_R3.xlsx' a data/decisiones/ (el flujo que pide esta arquitectura) no tenía
+    ningún efecto sobre el tablero, que seguía mostrando lo último que hubiera en ULTI_Gestion_v2.xlsx
     (desactualizado, o inexistente) -- de ahí que el Plan vs. Real apareciera vacío. Ver
     app.get_proyeccion(), que ahora llama a esta función en lugar de usar DEFAULT_PROYECCION_EXCEL.
 
     Devuelve None si el directorio no existe o no hay ningún archivo que matchee el patrón exacto
-    'Cadiz_proyeccion_R{N}.xlsx' (no es un error -- puede ser la primera corrida, antes de generar
+    'Ulti_proyeccion_R{N}.xlsx' (no es un error -- puede ser la primera corrida, antes de generar
     cualquier proyección)."""
     if not os.path.isdir(dir_decisiones):
         return None
@@ -4518,7 +4518,7 @@ _INPUTS_KEYS_FORZADAS = {
 
 
 def leer_decisiones_previas(path_excel_anterior, desde_ronda):
-    """Lee el 01_INPUTS de un Cadiz_proyeccion_R{N}.xlsx ANTERIOR (data_only=False, para poder
+    """Lee el 01_INPUTS de un Ulti_proyeccion_R{N}.xlsx ANTERIOR (data_only=False, para poder
     distinguir un valor literal tipeado por el usuario de una fórmula de arrastre '=G10' -- las
     fórmulas de arrastre NO se rescatan porque build_inputs()/arrastre_rows() ya las regenera solas,
     correctamente, en el archivo nuevo) y devuelve {(bloque||variable||dimension): {ronda: valor}}
@@ -4566,7 +4566,7 @@ def leer_decisiones_previas(path_excel_anterior, desde_ronda):
 def leer_decisiones_historicas(path_excel_anterior, rondas_reales):
     """[Fix 1] Complemento "hacia atrás" de leer_decisiones_previas() (que rescata columnas >=
     desde_ronda, "hacia adelante" -- decisiones futuras ya cargadas). Lee el 01_INPUTS de un
-    Cadiz_proyeccion_R{N}.xlsx ANTERIOR (mismo archivo, mismo modo data_only=False, mismo criterio
+    Ulti_proyeccion_R{N}.xlsx ANTERIOR (mismo archivo, mismo modo data_only=False, mismo criterio
     de "valor literal, no fórmula de arrastre") y devuelve {(bloque||variable||dimension): {ronda:
     valor}} para las columnas de ronda que YA SON HISTÓRICAS en esta corrida (rn in rondas_reales --
     típicamente {0,1,...,n_real}, con RDOS oficial ya cargado). decision_row() (en build_inputs())
@@ -4655,8 +4655,8 @@ def aplicar_overrides_inputs(ws_in, row_idx, overrides, desde_ronda):
 
 
 def extraer_plan_congelado(path_excel_anterior, ronda_actual_a_decidir):
-    """Lee el DATA_EXPORT de un Cadiz_proyeccion_R{N}.xlsx ANTERIOR *ya recalculado* (data_only=True
-    -- necesita valores cacheados; ver _recalcular_con_libreoffice) y devuelve TODAS las filas CADIZ
+    """Lee el DATA_EXPORT de un Ulti_proyeccion_R{N}.xlsx ANTERIOR *ya recalculado* (data_only=True
+    -- necesita valores cacheados; ver _recalcular_con_libreoffice) y devuelve TODAS las filas ULTI
     con status="PLAN" cuya ronda sea DISTINTA de `ronda_actual_a_decidir` -- es decir, cualquier
     proyección ya congelada de una ronda que en el archivo nuevo va a ser REAL o ya lo era (rondas <
     ronda_actual_a_decidir), tanto si se congeló recién (la ronda que acaba de pasar a REAL con este
@@ -4677,7 +4677,7 @@ def extraer_plan_congelado(path_excel_anterior, ronda_actual_a_decidir):
         return None
     ws = wb[DATA_EXPORT_SHEET]
     filas = [row for row in ws.iter_rows(min_row=2, values_only=True)
-             if row[3] == "CADIZ" and row[2] == "PLAN" and row[0] != ronda_actual_a_decidir]
+             if row[3] == "ULTI" and row[2] == "PLAN" and row[0] != ronda_actual_a_decidir]
     wb.close()
     return filas or None
 
@@ -4708,7 +4708,7 @@ def _recalcular_con_libreoffice(path_xlsx, timeout=120):
     approach validado varias veces en este proyecto: 0 errores de fórmula, identidades contables
     exactas -- ver informes de fases anteriores). Hace falta porque openpyxl NUNCA evalúa fórmulas:
     sin este paso, un archivo recién generado no tiene valores cacheados para sus celdas de fórmula,
-    y el mecanismo de "Plan Congelado" (leer el DATA_EXPORT de un Cadiz_proyeccion_R{N}.xlsx anterior
+    y el mecanismo de "Plan Congelado" (leer el DATA_EXPORT de un Ulti_proyeccion_R{N}.xlsx anterior
     con data_only=True) devolvería None para todo.
 
     Devuelve (True, None) si recalculó OK, o (False, mensaje) si LibreOffice no está disponible o
@@ -4748,8 +4748,8 @@ def _recalcular_con_libreoffice(path_xlsx, timeout=120):
 # ======================================================================================
 def generar_excel(rdos_files, out_buffer=None, recalcular=True, overrides=None, plan_congelado=None, decisiones_historicas=None, rdos_files_referencia=None, ronda_plan_hasta=None):
     """overrides: dict de leer_decisiones_previas() -- decisiones/condiciones literales rescatadas
-    del Cadiz_proyeccion_R{N}.xlsx anterior, para no tener que volver a tipear todo cada ronda.
-    plan_congelado: lista de extraer_plan_congelado() -- foto de las filas CADIZ de la última ronda
+    del Ulti_proyeccion_R{N}.xlsx anterior, para no tener que volver a tipear todo cada ronda.
+    plan_congelado: lista de extraer_plan_congelado() -- foto de las filas ULTI de la última ronda
     real, tal como estaban proyectadas ANTES de tener el RDOS real, para el dashboard Plan vs. Real.
     decisiones_historicas: dict de leer_decisiones_historicas() -- [Fix 1] decisiones REALMENTE
     tomadas en rondas que ya son históricas (rn in rondas_reales), para restaurarlas y bloquearlas
@@ -4850,7 +4850,7 @@ def generar_excel(rdos_files, out_buffer=None, recalcular=True, overrides=None, 
         # fix_digit_sheet_quoting() y DIGIT_LEAD_SHEETS más arriba). Se hace sobre un archivo temporal
         # en disco porque LibreOffice necesita un path, no un buffer en memoria.
         with tempfile.TemporaryDirectory() as tmpdir:
-            tmp_path = os.path.join(tmpdir, "CADIZ_Gestion_tmp.xlsx")
+            tmp_path = os.path.join(tmpdir, "ULTI_Gestion_tmp.xlsx")
             wb.save(tmp_path)
             ok, msg = _recalcular_con_libreoffice(tmp_path)
             if ok:
@@ -4874,7 +4874,7 @@ def generar_excel(rdos_files, out_buffer=None, recalcular=True, overrides=None, 
         buf = out_buffer if out_buffer is not None else io.BytesIO()
         wb.save(buf)
         buf.seek(0)
-    print(f"Filas históricas migradas: {n_hist} | Filas PLAN/SIM CADIZ (rondas activas R2-R12): {n_plan} | Filas DATA_EXPORT: {n_export}")
+    print(f"Filas históricas migradas: {n_hist} | Filas PLAN/SIM ULTI (rondas activas R2-R12): {n_plan} | Filas DATA_EXPORT: {n_export}")
     if overrides:
         print(f"Rescate de decisiones: {n_overrides_aplicados} valores aplicados, {n_overrides_sin_match} claves sin match en 01_INPUTS")
     if decisiones_historicas:
@@ -4895,8 +4895,8 @@ def generar_excel(rdos_files, out_buffer=None, recalcular=True, overrides=None, 
 # ======================================================================================
 # GENERAR_EXCEL_DESDE_REPO — punto de entrada del flujo "todo en rutas fijas del repo" (spec del
 # usuario, Fase 4): sin file_uploader en Streamlit. Detecta automáticamente la frontera REAL a
-# partir de dir_oficial, arma el nombre del archivo de salida Cadiz_proyeccion_R{N+1}.xlsx, rescata
-# decisiones futuras + Plan Congelado del último Cadiz_proyeccion_R{N}.xlsx en dir_decisiones (si
+# partir de dir_oficial, arma el nombre del archivo de salida Ulti_proyeccion_R{N+1}.xlsx, rescata
+# decisiones futuras + Plan Congelado del último Ulti_proyeccion_R{N}.xlsx en dir_decisiones (si
 # existe -- si no, es la primera corrida / bootstrap y arranca de cero, sin overrides ni plan
 # congelado, que es un resultado válido, no un error) y genera el workbook ya recalculado.
 # ======================================================================================
@@ -4927,21 +4927,21 @@ def generar_excel_desde_repo(dir_oficial="data/raw/practicas/oficial", dir_decis
             f"de generar de nuevo.")
     n_real = max(rdos_files)
     n_next = n_real + 1
-    nombre_salida = f"Cadiz_proyeccion_R{n_next}.xlsx"
+    nombre_salida = f"Ulti_proyeccion_R{n_next}.xlsx"
 
     # Ronda N.N: el archivo con las decisiones a rescatar puede ser uno de dos, según si esta corrida
     # AVANZA la frontera (llegó RDOS nuevo) o simplemente REGENERA la misma ronda en curso (el usuario
     # afinó decisiones y corre de nuevo, sin RDOS nuevo todavía):
-    #   1. Cadiz_proyeccion_R{n_next}.xlsx -- MISMA ronda que se está por generar de nuevo (existe si
+    #   1. Ulti_proyeccion_R{n_next}.xlsx -- MISMA ronda que se está por generar de nuevo (existe si
     #      ya se había generado antes para esta misma frontera). Se prioriza porque es la versión más
     #      reciente de las decisiones de la ronda en curso.
-    #   2. Cadiz_proyeccion_R{n_real}.xlsx -- el archivo de la corrida ANTERIOR, de cuando n_real
+    #   2. Ulti_proyeccion_R{n_real}.xlsx -- el archivo de la corrida ANTERIOR, de cuando n_real
     #      todavía era la ronda a decidir (recién ahora pasa a REAL con el RDOS nuevo).
     # En ambos casos se rescatan columnas >= n_next (incluye la propia ronda n_next: sus decisiones
     # ya cargadas no deben perderse) y se arrastran las filas ya congeladas del Plan (ver
     # extraer_plan_congelado) excluyendo la ronda n_next (todavía no tiene RDOS, no se congela).
-    path_mismo_next = os.path.join(dir_decisiones, f"Cadiz_proyeccion_R{n_next}.xlsx")
-    path_anterior = os.path.join(dir_decisiones, f"Cadiz_proyeccion_R{n_real}.xlsx")
+    path_mismo_next = os.path.join(dir_decisiones, f"Ulti_proyeccion_R{n_next}.xlsx")
+    path_anterior = os.path.join(dir_decisiones, f"Ulti_proyeccion_R{n_real}.xlsx")
     path_previo = path_mismo_next if os.path.exists(path_mismo_next) else (path_anterior if os.path.exists(path_anterior) else None)
 
     overrides, plan_congelado, decisiones_historicas = {}, None, {}
@@ -4965,7 +4965,7 @@ def generar_excel_desde_repo(dir_oficial="data/raw/practicas/oficial", dir_decis
 # Wrapper de línea de comandos, solo para pruebas locales (guarda en disco en vez de devolver el
 # buffer). El flujo real de producción es generar_excel() llamado desde app.py (Streamlit), que
 # nunca toca el disco del servidor. Rutas por defecto = los 4 RDOS ya jugados (R0-R3) en este
-# entorno de trabajo -- ajustar CADIZ_BUILD_DIR/nombres si cambian de ubicación.
+# entorno de trabajo -- ajustar ULTI_BUILD_DIR/nombres si cambian de ubicación.
 # ------------------------------------------------------------------------------------------------
 def main():
     rdos_files_default = {

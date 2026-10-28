@@ -7,7 +7,7 @@ import re
 import pandas as pd
 import xlrd
 
-COMPANIES = ['CADIZ', 'CEOS', 'CHIEF', 'CLAVE', 'CUORE', 'FOCUS', 'TOKIO']
+COMPANIES = ['LUCKY', 'MECHA', 'PRELA', 'NEXUS', 'ULTI', 'NOSRE', 'NODO']
 N_PRACTICE_ROUNDS = 3  # Cesim: 3 rondas de practica + 12 oficiales
 
 MODULE_MAP = {
@@ -16,16 +16,16 @@ MODULE_MAP = {
     'Cuenta de resultados, miles USD, EE.UU.': 'Estados financieros',
     'Hoja de Balance, miles USD, EE.UU.': 'Estados financieros',
     'Flujo de efectivo de casa matriz, miles USD': 'Estados financieros',
-    'Cuenta de resultados, miles USD, China': 'Estados financieros',
-    'Hoja de Balance, miles USD, China': 'Estados financieros',
-    'Estado de flujo de efectivo, miles USD, China': 'Estados financieros',
+    'Cuenta de resultados, miles USD, Asia': 'Estados financieros',
+    'Hoja de Balance, miles USD, Asia': 'Estados financieros',
+    'Estado de flujo de efectivo, miles USD, Asia': 'Estados financieros',
     'Cuenta de resultados, miles USD, Europa': 'Estados financieros',
     'Hoja de Balance, miles USD, Europa': 'Estados financieros',
     'Estado de flujo de efectivo, miles USD, Europa': 'Estados financieros',
     'Ratios e indicadores financieros clave': 'Ratios',
     'Informe de mercado, global': 'Informes de mercado',
     'Informe de mercado, EE.UU.': 'Informes de mercado',
-    'Informe de mercado, China': 'Informes de mercado',
+    'Informe de mercado, Asia': 'Informes de mercado',
     'Informe de mercado, Europa': 'Informes de mercado',
     'Informe de RRHH': 'Informe de RRHH',
     'Informe ESG': 'Sostenibilidad',
@@ -34,11 +34,11 @@ MODULE_MAP = {
     'Detalles de logística': 'Informes de producción',
     'Informe de costos': 'Informes de costos',
     'Desglose de margen por tec, miles USD, EE.UU.': 'Informes de costos',
-    'Desglose de margen por tec, miles USD, China': 'Informes de costos',
+    'Desglose de margen por tec, miles USD, Asia': 'Informes de costos',
     'Desglose de margen por tec, miles USD, Europa': 'Informes de costos',
     'Valuación - Global': 'Valuación',
     'Valuación - EE.UU.': 'Valuación',
-    'Valuación - China': 'Valuación',
+    'Valuación - Asia': 'Valuación',
     'Valuación - Europa': 'Valuación',
     'Creación de valor, miles USD': 'Creación de valor',
     'Demanda estimada, miles unidades': 'Informes de mercado',
@@ -52,7 +52,7 @@ def detect_round(title: str):
     if m:
         n = int(m.group(1))
         return f'Práctica {n}', 'Práctica', n, n - N_PRACTICE_ROUNDS
-    # Bug real verificado (no un supuesto): el RDOS oficial de la Ronda 0 de CADIZ titula la hoja
+    # Bug real verificado (no un supuesto): el RDOS oficial de la Ronda 0 de ULTI titula la hoja
     # "Resultados, Ronda inicial 0" (confirmado contra el .xls real), no "Ronda 0". La regex genérica
     # de abajo NO matchea por la palabra "inicial" interpuesta -> sin este caso especial, Ronda 0
     # quedaba con Tipo_Ronda='Desconocido' y Ronda_Orden=None, y como app.py filtra Tipo_Ronda=='Oficial'
@@ -101,17 +101,20 @@ def parse_cesim_xls(path_or_buffer) -> pd.DataFrame:
         xf = xf_list[sheet.cell_xf_index(r, 0)]
         font = font_list[xf.font_index]
         size = int(font.height / 20)
-        raw.append(dict(label=label.strip(), size=size, vals=vals))
+        weight = font.weight
+        raw.append(dict(label=label.strip(), size=size, weight=weight, vals=vals))
 
     records = []
     cur_statement = cur_section = cur_subgroup = None
+    active_companies = list(COMPANIES)
 
-    def is_company_header(vals):
-        return vals == COMPANIES
+    def is_company_header(label, vals):
+        return label == '' and all(isinstance(v, str) and v.strip() != '' for v in vals)
 
     for item in raw:
-        label, size, vals = item['label'], item['size'], item['vals']
-        if is_company_header(vals):
+        label, size, weight, vals = item['label'], item['size'], item['weight'], item['vals']
+        if is_company_header(label, vals):
+            active_companies = [v.strip() for v in vals]
             continue
         all_empty = all(v == '' for v in vals)
 
@@ -120,11 +123,29 @@ def parse_cesim_xls(path_or_buffer) -> pd.DataFrame:
                 cur_statement, cur_section, cur_subgroup = label, None, None
             elif size == 12:
                 cur_section, cur_subgroup = label, None
-            else:
+            elif weight >= 700 or font_list[0].weight >= 700:
                 cur_subgroup = label
+            else:
+                # Fila de datos vacia (ej. tecnologia sin produccion/ventas en la ronda):
+                # NO es un subgrupo (su fuente es normal, weight 400), pero registramos
+                # las celdas vacias para mantener la estructura completa y no ensuciar cur_subgroup.
+                for company, v in zip(active_companies, vals):
+                    records.append({
+                        'Ronda': ronda,
+                        'Tipo_Ronda': tipo_ronda,
+                        'Ronda_Numero': numero,
+                        'Ronda_Orden': orden,
+                        'Modulo': MODULE_MAP.get(cur_statement, 'Sin clasificar'),
+                        'Estado': cur_statement or '',
+                        'Seccion': cur_section or '',
+                        'Subgrupo': cur_subgroup or '',
+                        'Metrica': label,
+                        'Empresa': company,
+                        'Valor': v,
+                    })
             continue
 
-        for company, v in zip(COMPANIES, vals):
+        for company, v in zip(active_companies, vals):
             records.append({
                 'Ronda': ronda,
                 'Tipo_Ronda': tipo_ronda,
@@ -149,7 +170,7 @@ def parse_cesim_xls(path_or_buffer) -> pd.DataFrame:
 # en el nombre del Estado, de la Sección o de la Métrica -- según la hoja -- y el valor de la celda
 # es el crudo EN MILES, no el absoluto. Evidencia ya verificada de forma independiente (bottom-up,
 # 0,003% de diferencia): precio de venta x volumen vendido x tipo de cambio, sumado en las 3 áreas y
-# las 2 tecnologías activas de CADIZ (Ronda 2) = USD 73.716.619.198 contra "Ingresos por ventas"
+# las 2 tecnologías activas de ULTI (Ronda 2) = USD 73.716.619.198 contra "Ingresos por ventas"
 # Global publicado (73.714.297,44 "miles USD") x1000 = USD 73.714.297.440,62. Ver el detalle completo
 # (con el historial de idas y vueltas -- Adendas 23 a 27) en gap_analysis.py, docstring de
 # `_to_absoluto()`.
@@ -171,8 +192,8 @@ def parse_cesim_xls(path_or_buffer) -> pd.DataFrame:
 # 'Costos totales mensuales por empleado, USD' (Informe de RRHH) vive DENTRO de la Sección "Desglose
 # de los costos, miles USD" -- junto a líneas que sí son agregados (Costos totales, Salarios y costos
 # laborales, etc.) -- pero es un costo POR EMPLEADO, ya absoluto (~USD 10.783/mes/empleado en los RDOS
-# reales de CADIZ; x1000 sería ~USD 10,78 millones/mes/empleado, no plausible). Auditado exhaustivamente
-# contra los RDOS reales de CADIZ R0-R3 (los 7 equipos): es el ÚNICO caso de una métrica por-unidad/
+# reales de ULTI; x1000 sería ~USD 10,78 millones/mes/empleado, no plausible). Auditado exhaustivamente
+# contra los RDOS reales de ULTI R0-R3 (los 7 equipos): es el ÚNICO caso de una métrica por-unidad/
 # por-empleado anidada dentro de un Estado/Sección/Métrica rotulado "miles" -- no hay otros.
 _PATRON_ESCALA_MILES = re.compile(r'miles (?:USD|RMB|EUR)', re.IGNORECASE)
 _EXCEPCIONES_ESCALA_MONETARIA = {'Costos totales mensuales por empleado, USD'}

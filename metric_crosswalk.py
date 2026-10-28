@@ -2,7 +2,7 @@
 """
 metric_crosswalk.py -- Tabla de cruce entre las dos fuentes de datos del control de gestión:
 
-  - PROYECTADO: CADIZ_Gestion_v2.xlsx!DATA_EXPORT, leído directamente por gap_analysis.load_proyeccion()
+  - PROYECTADO: ULTI_Gestion_v2.xlsx!DATA_EXPORT, leído directamente por gap_analysis.load_proyeccion()
     (columnas: round/scenario/status/team/region/technology/metric/value/unit/...).
   - REAL: el DataFrame tidy que arma cesim_parser.build_historico() a partir de los .xls de RDOS
     (columnas: Ronda/Tipo_Ronda/Ronda_Numero/Ronda_Orden/Modulo/Estado/Seccion/Subgrupo/Metrica/
@@ -19,7 +19,7 @@ secciones en cortes siguientes, con la misma disciplina de verificación fila a 
 Cada entrada:
     "clave_kpi": {
         "label": "Nombre para mostrar en el tablero",
-        "proyeccion": {"metric": <valor de la columna 'metric' en cadiz_proyeccion.csv>,
+        "proyeccion": {"metric": <valor de la columna 'metric' en ulti_proyeccion.csv>,
                         "region": <valor de la columna 'region'>},
         "real": {"estado": <valor de 'Estado' en el df de cesim_parser>,
                   "metrica": <valor de 'Metrica'>,
@@ -105,15 +105,15 @@ CROSSWALK_FINANZAS = {
 # criterio -- cada entrada se verificó contra Ronda 1 real antes de incorporarse, y solo se listaron
 # combinaciones donde la definición de ambos lados (Plan/Real) es efectivamente la misma magnitud.
 #
-# NOTA IMPORTANTE sobre alcance temporal: tanto Mercado como Operaciones dependen de CADIZ_Gestion_v2
+# NOTA IMPORTANTE sobre alcance temporal: tanto Mercado como Operaciones dependen de ULTI_Gestion_v2
 # .xlsx!DATA_EXPORT, que solo proyecta (status=PLAN) desde Ronda 2 en adelante -- Ronda 0 y Ronda 1 ya
 # se jugaron sin un plan cargado de antemano en este modelo, así que ahí no corresponde ningún gap
 # (calcular_gaps ya devuelve 'sin_proyeccion' para esas rondas, correctamente). El primer gap real
 # aparece en Ronda 2 en cuanto CESIM publique su RDOS.
 #
-# "Cuota de mercado CADIZ (ponderada por volumen)" (fila de 03_RATIOS, antes "promedio simple, 3
+# "Cuota de mercado ULTI (ponderada por volumen)" (fila de 03_RATIOS, antes "promedio simple, 3
 # mercados, Combustión+Híbrido"): la fórmula del Excel dividía por 12 (incluía los 6 casilleros de
-# Eléctrico/Hidrógeno donde CADIZ no compite, sumando ceros de más en vez de ponderar por volumen
+# Eléctrico/Hidrógeno donde ULTI no compite, sumando ceros de más en vez de ponderar por volumen
 # como hace CESIM) -- confirmado contra Ronda 1 real (CESIM: 18,03% ponderado por ventas; Excel
 # viejo: 4,63% en Ronda 2 con esos mismos supuestos). CORREGIDO en build_gestion_v2.py (ver Adenda
 # de Integracion_Excel_Web_Control_Gestion.md): ahora pondera la cuota de cada país por su tamaño
@@ -122,39 +122,39 @@ CROSSWALK_FINANZAS = {
 CROSSWALK_MERCADO = {
     "demanda_estimada_eeuu": {
         "label": "Demanda estimada — EE.UU.",
-        "proyeccion": {"metric": "Demanda estimada CADIZ (unidades)", "region": "EE.UU."},
+        "proyeccion": {"metric": "Demanda estimada ULTI (unidades)", "region": "EE.UU."},
         "real": {"estado": "Informe de mercado, EE.UU.", "metrica": "Demanda, miles unidades", "seccion": None},
         "tipo": "unidades", "gap_favorable": None,
     },
-    "demanda_estimada_china": {
-        "label": "Demanda estimada — China",
-        "proyeccion": {"metric": "Demanda estimada CADIZ (unidades)", "region": "China"},
-        "real": {"estado": "Informe de mercado, China", "metrica": "Demanda, miles unidades", "seccion": None},
+    "demanda_estimada_asia": {
+        "label": "Demanda estimada — Asia",
+        "proyeccion": {"metric": "Demanda estimada ULTI (unidades)", "region": "Asia"},
+        "real": {"estado": "Informe de mercado, Asia", "metrica": "Demanda, miles unidades", "seccion": None},
         "tipo": "unidades", "gap_favorable": None,
     },
     "demanda_estimada_europa": {
         "label": "Demanda estimada — Europa",
-        "proyeccion": {"metric": "Demanda estimada CADIZ (unidades)", "region": "Europa"},
+        "proyeccion": {"metric": "Demanda estimada ULTI (unidades)", "region": "Europa"},
         "real": {"estado": "Informe de mercado, Europa", "metrica": "Demanda, miles unidades", "seccion": None},
         "tipo": "unidades", "gap_favorable": None,
     },
 }
 
-# "Utilización de capacidad": el RDOS NO publica un único % por área (EE.UU./China) -- lo publica
+# "Utilización de capacidad": el RDOS NO publica un único % por área (EE.UU./Asia) -- lo publica
 # desglosado por (área, tecnología) en 'Detalles de fabricación' -> Seccion='Capacidad empleada, %',
-# Subgrupo=área, Metrica=tecnología (ej. R1 real CADIZ: EE.UU./Combustión=30%, EE.UU./Híbrido=55%).
+# Subgrupo=área, Metrica=tecnología (ej. R1 real ULTI: EE.UU./Combustión=30%, EE.UU./Híbrido=55%).
 # Un primer intento de crosswalk (bug ya corregido) apuntaba mal a Metrica='Capacidad empleada, %'
 # -- eso no existe como tal, siempre salía vacío. En vez de eso se RECONSTRUYE el agregado real con
 # la misma lógica que usa el propio modelo Excel para su lado Plan: (Producción interna real, sumada
 # todas las tecnologías del área) / Capacidad operativa (cierre de ronda) -- ver 'real_calc' más abajo,
 # resuelto en gap_analysis._valor_real_utilizacion_capacidad(). La capacidad NO se hardcodea como
-# constante en la web: se lee de CADIZ_Gestion_v2.xlsx!DATA_EXPORT (metric='Capacidad operativa',
-# status=PLAN), que el motor ya actualiza solo si CADIZ invierte/desinvierte (decisión D2) -- así que
+# constante en la web: se lee de ULTI_Gestion_v2.xlsx!DATA_EXPORT (metric='Capacidad operativa',
+# status=PLAN), que el motor ya actualiza solo si ULTI invierte/desinvierte (decisión D2) -- así que
 # si la capacidad cambia en una ronda futura, el real se recalcula solo, sin tocar la web. Verificado
-# EXACTO contra Ronda 1 real: (336+616)/1.400 = 68,0% EE.UU., (240+100)/500 = 68,0% China -- coincide
+# EXACTO contra Ronda 1 real: (336+616)/1.400 = 68,0% EE.UU., (240+100)/500 = 68,0% Asia -- coincide
 # con el 68% ya confirmado por el equipo (no el 85% que se había calculado mal en un intento anterior).
 #  "Capacidad empleada" (antes "Utilización de capacidad" acá) -- mismo término que usa la tarjeta
-#  nativa de Operaciones > Capacidad y Costos ("Capacidad empleada — EE.UU./China", desglosada por
+#  nativa de Operaciones > Capacidad y Costos ("Capacidad empleada — EE.UU./Asia", desglosada por
 #  tecnología); el "(total)" aclara que este KPI es el agregado de planta, no el desglose por
 #  tecnología que se ve en esa otra pestaña -- mismo dato, mismo nombre base, alcance distinto.
 CROSSWALK_OPERACIONES = {
@@ -165,11 +165,11 @@ CROSSWALK_OPERACIONES = {
         "real_calc": "utilizacion_capacidad", "real_calc_region": "EE.UU.",
         "tipo": "ratio", "gap_favorable": None,
     },
-    "utilizacion_capacidad_china": {
-        "label": "Capacidad empleada — China (total)",
-        "proyeccion": {"metric": "Utilización de capacidad", "region": "China"},
+    "utilizacion_capacidad_asia": {
+        "label": "Capacidad empleada — Asia (total)",
+        "proyeccion": {"metric": "Utilización de capacidad", "region": "Asia"},
         "real": {"estado": "Detalles de fabricación", "metrica": "Capacidad empleada, %", "seccion": None},
-        "real_calc": "utilizacion_capacidad", "real_calc_region": "China",
+        "real_calc": "utilizacion_capacidad", "real_calc_region": "Asia",
         "tipo": "ratio", "gap_favorable": None,
     },
 }
@@ -199,7 +199,7 @@ CROSSWALK_RESULTADOS = {
         "tipo": "usd", "gap_favorable": "real_mayor",
         # CESIM no publica una línea de FCF en el RDOS -- nunca va a haber 'real' para comparar (no es
         # un 'real pendiente' temporal como Utilización de capacidad en una ronda sin RDOS publicado
-        # todavía). Por pedido del equipo, se muestra como evolución de la PROYECCIÓN propia de CADIZ
+        # todavía). Por pedido del equipo, se muestra como evolución de la PROYECCIÓN propia de ULTI
         # a través de las rondas, sin intentar un gap contra algo que no existe.
         "real_no_publicado": True,
     },
