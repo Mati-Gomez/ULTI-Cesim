@@ -116,6 +116,7 @@ def _ramp_secuencial(hex_color, n, claro=0.88):
         r2, g2, b2 = colorsys.hls_to_rgb(hue, l_i, s_i)
         out.append('#{:02x}{:02x}{:02x}'.format(round(r2 * 255), round(g2 * 255), round(b2 * 255)))
     return out
+RONDAS_ORDENADAS = [f'Año {i}' for i in range(13)]
 CHART_HEIGHT = 260      # alto del área de ploteo de referencia
 ALTURA_TARJETA = 370    # alto FIJO de toda tarjeta de gráfico, con o sin leyenda abajo:
                         # es lo que garantiza que dos gráficos en columnas queden parejos
@@ -332,18 +333,30 @@ def chart_evolucion(sub: pd.DataFrame, titulo: str, altura=None):
     if ev.empty: return st.info('Sin datos para evolución.')
     fig = go.Figure()
     for comp in COMPANIES:
-        d = ev[ev['Empresa'] == comp].sort_values('Ronda_Orden')
+        d = ev[ev['Empresa'] == comp].sort_values('Ronda_Orden').copy()
         if d.empty: continue
         es_cadiz = comp == MY_COMPANY
+        d['Valor_Prev'] = d['Valor'].shift(1)
+        d['YoY'] = (d['Valor'] - d['Valor_Prev']) / d['Valor_Prev'].replace(0, np.nan).abs() * 100
+        textos = [f"{format_num(r['Valor'])} ({r['YoY']:+.1f}% vs. {r_prev.replace('Año ', 'A')})"
+                  if pd.notna(r['YoY']) and isinstance(r_prev, str) else format_num(r['Valor'])
+                  for (_, r), r_prev in zip(d.iterrows(), d['Ronda'].shift(1))]
         fig.add_trace(go.Scatter(x=d['Ronda'], y=d['Valor'], mode='lines+markers', name=comp,
                                   line=dict(color=COLOR_MAP[comp], width=3 if es_cadiz else 1),
-                                  marker=dict(size=6 if es_cadiz else 4), opacity=1.0 if es_cadiz else 0.5))
+                                  marker=dict(size=6 if es_cadiz else 4), opacity=1.0 if es_cadiz else 0.5,
+                                  text=textos, hovertemplate=f'<b>%{{x}}</b><br>{comp}: %{{text}}<extra></extra>'))
     promedio_x_ronda = ev.groupby('Ronda_Orden').agg(Ronda=('Ronda', 'first'), Valor=('Valor', 'mean')).sort_index()
     if len(promedio_x_ronda) > 0:
+        promedio_x_ronda['Valor_Prev'] = promedio_x_ronda['Valor'].shift(1)
+        promedio_x_ronda['YoY'] = (promedio_x_ronda['Valor'] - promedio_x_ronda['Valor_Prev']) / promedio_x_ronda['Valor_Prev'].replace(0, np.nan).abs() * 100
+        textos_prom = [f"{format_num(r['Valor'])} ({r['YoY']:+.1f}% vs. {r_prev.replace('Año ', 'A')})"
+                       if pd.notna(r['YoY']) and isinstance(r_prev, str) else format_num(r['Valor'])
+                       for (_, r), r_prev in zip(promedio_x_ronda.iterrows(), promedio_x_ronda['Ronda'].shift(1))]
         color_ref = 'rgba(255,255,255,0.35)' if es_modo_oscuro() else 'rgba(26,23,20,0.35)'
         fig.add_trace(go.Scatter(x=promedio_x_ronda['Ronda'], y=promedio_x_ronda['Valor'], mode='lines+markers',
-                                  name='Promedio', line=dict(color=color_ref, width=1, dash='dash'), marker=dict(size=4)))
-    fig.update_layout(title=f'Evolución — {titulo}')
+                                  name='Promedio', line=dict(color=color_ref, width=1, dash='dash'), marker=dict(size=4),
+                                  text=textos_prom, hovertemplate='<b>%{x}</b><br>Promedio: %{text}<extra></extra>'))
+    fig.update_layout(title=f'Evolución — {titulo}', xaxis=dict(categoryorder='array', categoryarray=RONDAS_ORDENADAS))
     # 'altura' opcional (a pedido del equipo, "muy chiquitos" -- ver Finanzas): los 7 gráficos de
     # evolución (8 series: 7 equipos + Promedio) necesitan más alto que el fijo de ALTURA_TARJETA
     # (370px) para leerse bien a ancho completo -- default None preserva el alto de siempre en
@@ -397,6 +410,7 @@ def chart_dos_metricas_apiladas(titulo, x_a, y_a, nombre_a, color_a, tipo_a,
                    range=[0, _techo_apilado(y_a)], side='left'),
         yaxis2=dict(title=nombre_b, title_font=dict(size=10, color=color_b), tickfont=dict(color=color_b),
                     range=[0, _techo_apilado(y_b)], overlaying='y', side='right', showgrid=False),
+        xaxis=dict(categoryorder='array', categoryarray=RONDAS_ORDENADAS),
         legend=dict(orientation='h', yanchor='top', y=-0.25, xanchor='center', x=0.5))
     mostrar(fig)
 def sparkline(valores, color=None, invertir=False):
@@ -1120,6 +1134,43 @@ def evaluar_alertas():
 
     if orden_prev is not None:
         ronda_prev = df[df['Ronda_Orden'] == orden_prev]['Ronda'].iloc[0]
+
+        # --- Crecimiento del Mercado vs. Crecimiento propio en unidades (por región) ---
+        for pais in _MERCADOS_GAP:
+            v_act_mkt = df[(df['Estado'] == f'Informe de mercado, {pais}') & (df['Metrica'] == 'Ventas, miles unidades') & (df['Ronda_Orden'] == orden_hoy)]['Valor']
+            v_prev_mkt = df[(df['Estado'] == f'Informe de mercado, {pais}') & (df['Metrica'] == 'Ventas, miles unidades') & (df['Ronda_Orden'] == orden_prev)]['Valor']
+            mkt_act = pd.to_numeric(v_act_mkt, errors='coerce').sum()
+            mkt_prev = pd.to_numeric(v_prev_mkt, errors='coerce').sum()
+
+            v_act_emp = df[(df['Estado'] == f'Informe de mercado, {pais}') & (df['Metrica'] == 'Ventas, miles unidades') & (df['Ronda_Orden'] == orden_hoy) & (df['Empresa'] == empresa_analisis)]['Valor']
+            v_prev_emp = df[(df['Estado'] == f'Informe de mercado, {pais}') & (df['Metrica'] == 'Ventas, miles unidades') & (df['Ronda_Orden'] == orden_prev) & (df['Empresa'] == empresa_analisis)]['Valor']
+            emp_act = pd.to_numeric(v_act_emp, errors='coerce').sum()
+            emp_prev = pd.to_numeric(v_prev_emp, errors='coerce').sum()
+
+            if mkt_prev > 0 and emp_prev > 0:
+                c_mkt = (mkt_act - mkt_prev) / mkt_prev * 100
+                c_emp = (emp_act - emp_prev) / emp_prev * 100
+                brecha = c_emp - c_mkt
+                if brecha <= -2.0:
+                    niv_tr = 'critico' if (c_mkt > 0 and c_emp < 0) else 'aviso'
+                    alertas.append((niv_tr, f'Tracción en {pais}: {empresa_analisis} {c_emp:+.1f}% vs. Mercado {c_mkt:+.1f}%',
+                                    f'En unidades físicas contra {ronda_prev}, {empresa_analisis} quedó {abs(brecha):.1f} p.p. por debajo del ritmo de la región.'))
+                elif brecha >= 2.0:
+                    alertas.append(('ok', f'Tracción en {pais}: {empresa_analisis} {c_emp:+.1f}% vs. Mercado {c_mkt:+.1f}%',
+                                    f'En unidades físicas contra {ronda_prev}, {empresa_analisis} superó en +{brecha:.1f} p.p. el crecimiento de la región (ganó cuota).'))
+
+            # --- Despegue tecnológico en el mix de demanda regional (>= 5 p.p. de salto en un año) ---
+            dem_tot_act = pd.to_numeric(df[(df['Estado'] == f'Informe de mercado, {pais}') & (df['Metrica'] == 'Demanda, miles unidades') & (df['Ronda_Orden'] == orden_hoy)]['Valor'], errors='coerce').sum()
+            dem_tot_prev = pd.to_numeric(df[(df['Estado'] == f'Informe de mercado, {pais}') & (df['Metrica'] == 'Demanda, miles unidades') & (df['Ronda_Orden'] == orden_prev)]['Valor'], errors='coerce').sum()
+            if dem_tot_act > 0 and dem_tot_prev > 0:
+                for tech in _TECNOLOGIAS_GAP[1:]:
+                    d_t_act = pd.to_numeric(df[(df['Estado'] == f'Informe de mercado, {pais}') & (df['Seccion'] == tech) & (df['Metrica'] == 'Demanda, miles unidades') & (df['Ronda_Orden'] == orden_hoy)]['Valor'], errors='coerce').sum()
+                    d_t_prev = pd.to_numeric(df[(df['Estado'] == f'Informe de mercado, {pais}') & (df['Seccion'] == tech) & (df['Metrica'] == 'Demanda, miles unidades') & (df['Ronda_Orden'] == orden_prev)]['Valor'], errors='coerce').sum()
+                    pct_act = (d_t_act / dem_tot_act) * 100
+                    pct_prev = (d_t_prev / dem_tot_prev) * 100
+                    if (pct_act - pct_prev) >= 5.0:
+                        alertas.append(('aviso', f'Aceleración de {tech} en {pais} ({pct_prev:.1f}% → {pct_act:.1f}% del mix)',
+                                        f'Ganó +{pct_act - pct_prev:.1f} p.p. de participación sobre la demanda total de {pais} respecto de {ronda_prev}.'))
         ratios_prev = df[(df['Estado'] == 'Ratios e indicadores financieros clave') & (df['Ronda_Orden'] == orden_prev)]
 
         # Posición en el ranking de retorno del accionista
@@ -2009,6 +2060,47 @@ def seccion_mercado():
         else:
             st.info('Sin datos suficientes de Promoción o Cuota de mercado para esta combinación.')
 
+        st.divider()
+        st.subheader('Inversión en Publicidad y Enfoque — Evolución año a año')
+        st.caption(f'{tech_sel}, {pais_sel} (todos los años). Pasá el cursor sobre cada punto para ver el presupuesto de promoción, la variación % contra el año anterior y qué Enfoque de marketing eligió cada equipo en ese año.')
+        promo_evo = df_all[(df_all['Estado'] == f'Desglose de margen por tec, miles USD, {pais_sel}') &
+                           (df_all['Seccion'] == tech_sel) & (df_all['Metrica'] == 'Promoción')].copy()
+        enf_evo = df_all[(df_all['Estado'] == estado_pais) & (df_all['Seccion'] == tech_sel) &
+                         (df_all['Metrica'] == 'Enfoque de la estrategia de marketing')].copy()
+        promo_evo['Valor'] = num(promo_evo['Valor']).abs()
+        promo_evo = promo_evo.dropna(subset=['Valor'])
+        if not promo_evo.empty:
+            enf_map = enf_evo[['Ronda', 'Empresa', 'Valor']].rename(columns={'Valor': 'Enfoque'})
+            mkt_evo = promo_evo.merge(enf_map, on=['Ronda', 'Empresa'], how='left').sort_values('Ronda_Orden')
+            fig_mkt_evo = go.Figure()
+            for emp in COMPANIES:
+                d_e = mkt_evo[mkt_evo['Empresa'] == emp].sort_values('Ronda_Orden').copy()
+                if d_e.empty or (d_e['Valor'].fillna(0) == 0).all():
+                    continue
+                es_ulti = emp == MY_COMPANY
+                d_e['Valor_Prev'] = d_e['Valor'].shift(1)
+                d_e['YoY'] = (d_e['Valor'] - d_e['Valor_Prev']) / d_e['Valor_Prev'].replace(0, np.nan).abs() * 100
+                textos_m = []
+                for (_, r_m), r_prev in zip(d_e.iterrows(), d_e['Ronda'].shift(1)):
+                    v_str = f"${format_num(r_m['Valor'])}"
+                    if pd.notna(r_m['YoY']) and isinstance(r_prev, str):
+                        v_str += f" ({r_m['YoY']:+.1f}% vs. {r_prev.replace('Año ', 'A')})"
+                    enf_str = str(r_m['Enfoque']).strip() if pd.notna(r_m['Enfoque']) and str(r_m['Enfoque']).strip() != '' else 'Sin enfoque'
+                    textos_m.append(f"{v_str}<br>Enfoque: <b>{enf_str}</b>")
+                fig_mkt_evo.add_trace(go.Scatter(
+                    x=d_e['Ronda'], y=d_e['Valor'], mode='lines+markers', name=emp,
+                    line=dict(color=COLOR_MAP[emp], width=3 if es_ulti else 1.5),
+                    marker=dict(size=6 if es_ulti else 4),
+                    opacity=1.0 if es_ulti else 0.55,
+                    text=textos_m, hovertemplate=f'<b>%{{x}}</b> — {emp}<br>%{{text}}<extra></extra>'))
+            fig_mkt_evo.update_layout(
+                title=f'Promoción y Enfoque año a año — {tech_sel}, {pais_sel}',
+                yaxis_title='Promoción (USD)',
+                xaxis=dict(categoryorder='array', categoryarray=RONDAS_ORDENADAS))
+            mostrar(fig_mkt_evo)
+        else:
+            st.info('Sin inversión en promoción registrada para esta tecnología/mercado.')
+
     with tab_pan:
         c1p, c2p = st.columns(2)
         pais_pan = c1p.selectbox('Mercado', ['EE.UU.', 'Asia', 'Europa'], key='sel_pan_pais')
@@ -2230,6 +2322,7 @@ def seccion_operaciones():
                     resumen_reduccion.append(f'{area} {tech}: {reduccion_acum:+.1f}% desde {rondas[0]}')
             fig_curva.update_layout(title=f'Curva de Aprendizaje — Costo Unitario de Fabricación Propia ({empresa_analisis})',
                                      yaxis_title='USD/u.', xaxis_title=None,
+                                     xaxis=dict(categoryorder='array', categoryarray=RONDAS_ORDENADAS),
                                      legend=dict(orientation='h', yanchor='top', y=-0.2, xanchor='center', x=0.5))
             mostrar(fig_curva)
             if resumen_reduccion:
@@ -2349,32 +2442,29 @@ def seccion_operaciones():
         if unidades and unidades > 0:
             p_venta = gm('Ingresos por ventas') / unidades
             c_prod = -gm('Fabricación propia y por contrato') / unidades
+            c_imp = -gm('Costo de los productos importados') / unidades
             c_flete = -gm('Transporte y aranceles') / unidades
             c_caract = -gm('Costos de características') / unidades
             m_bruto = gm('Beneficio bruto') / unidades
-            _valores_margen_ue = [p_venta, c_prod, c_flete, c_caract, m_bruto]
+            etapas_ue = [('Precio', p_venta), ('- Fab. Local', c_prod)]
+            if abs(c_imp) > 1e-6:
+                etapas_ue.append(('- Importado (TP)', c_imp))
+            etapas_ue.extend([('- Logística/Arancel', c_flete), ('- Caract.', c_caract), ('= Margen Unitario', m_bruto)])
+            _valores_margen_ue = [v for _, v in etapas_ue]
             fig_ue = go.Figure(go.Waterfall(
-                orientation='v', measure=['absolute', 'relative', 'relative', 'relative', 'total'],
-                x=['Precio', '- Prod.', '- Logística', '- Caract.', '= Margen Unitario'],
+                orientation='v', measure=['absolute'] + ['relative'] * (len(etapas_ue) - 2) + ['total'],
+                x=[k for k, _ in etapas_ue],
                 y=_valores_margen_ue,
-                # Adenda 25: % entre paréntesis sobre el Precio (primera barra).
                 text=_texto_cascada(_valores_margen_ue), textposition='outside',
-                # Adenda 25: convención universal de color -- verde = suma, rojo = resta. Antes
-                # decreasing usaba MUTED_PALETTE[2] (verde grisáceo apagado, no rojo).
                 decreasing={'marker': {'color': COLOR_NEGATIVE}}, increasing={'marker': {'color': COLOR_POSITIVE}},
                 totals={'marker': {'color': COLOR_POSITIVE if m_bruto > 0 else COLOR_NEGATIVE}}
             ))
             fig_ue.update_layout(title=f'Margen Unitario — {tech_ue}, {pais_ue}')
             mostrar(fig_ue, ocultar_eje_valores='y')
-            costo_total_unit = -(c_prod + c_flete + c_caract)
+            costo_total_unit = -(c_prod + c_imp + c_flete + c_caract)
             markup_pct = (m_bruto / costo_total_unit * 100) if costo_total_unit else None
             margen_pct = (m_bruto / p_venta * 100) if p_venta else None
 
-            # Adenda 24 (a pedido del equipo): la tarjeta de Contribución Marginal Unitaria dejó de
-            # mostrar el valor absoluto (USD/u.) -- ese desglose ya se ve arriba, en el Waterfall --
-            # y pasa a mostrar solo el % (Contribución Marginal / Precio de Venta). Ambas tarjetas
-            # (Margen % y Mark-up %) ahora traen como delta la variación en puntos porcentuales vs.
-            # la ronda anterior, para el mismo país/tecnología elegidos, usando ronda_anterior_de().
             ronda_prev_ue = ronda_anterior_de(ronda_snapshot)
             margen_pct_prev = markup_pct_prev = None
             if ronda_prev_ue:
@@ -2390,6 +2480,7 @@ def seccion_operaciones():
                     p_venta_prev = gm_prev('Ingresos por ventas') / unidades_prev
                     m_bruto_prev = gm_prev('Beneficio bruto') / unidades_prev
                     costo_total_unit_prev = -(-gm_prev('Fabricación propia y por contrato') / unidades_prev
+                                               - gm_prev('Costo de los productos importados') / unidades_prev
                                                - gm_prev('Transporte y aranceles') / unidades_prev
                                                - gm_prev('Costos de características') / unidades_prev)
                     margen_pct_prev = (m_bruto_prev / p_venta_prev * 100) if p_venta_prev else None
@@ -2397,10 +2488,6 @@ def seccion_operaciones():
             delta_margen_pct = (margen_pct - margen_pct_prev) if (margen_pct is not None and margen_pct_prev is not None) else None
             delta_markup_pct = (markup_pct - markup_pct_prev) if (markup_pct is not None and markup_pct_prev is not None) else None
 
-            # Adenda 25 (a pedido del equipo: doble delta en todos los KPIs): además de vs. ronda
-            # anterior, se suma vs. Promedio Industria -- para eso hay que recalcular Margen %/
-            # Mark-up % de LOS 7 EQUIPOS en este mismo país/tecnología (antes solo se calculaba para
-            # el equipo en foco). `mercado` ya no está filtrado por empresa, se reusa tal cual.
             margen_pct_todos, markup_pct_todos = {}, {}
             for _emp in COMPANIES:
                 _margen_emp = df[(df['Estado'] == f'Desglose de margen por tec, miles USD, {pais_ue}') &
@@ -2412,6 +2499,7 @@ def seccion_operaciones():
                     _p_venta_e = _gme('Ingresos por ventas') / _unid_emp
                     _m_bruto_e = _gme('Beneficio bruto') / _unid_emp
                     _costo_e = -(-_gme('Fabricación propia y por contrato') / _unid_emp
+                                 - _gme('Costo de los productos importados') / _unid_emp
                                  - _gme('Transporte y aranceles') / _unid_emp
                                  - _gme('Costos de características') / _unid_emp)
                     margen_pct_todos[_emp] = (_m_bruto_e / _p_venta_e * 100) if _p_venta_e else None
@@ -2446,6 +2534,55 @@ def seccion_operaciones():
                        '(fabricación + logística + características) — mismo numerador, denominador distinto (precio '
                        'vs. costo), no confundir uno con otro. Deltas en puntos porcentuales (p.p.), no % relativo: '
                        'vs. el año inmediatamente anterior y vs. el promedio de los 7 equipos, mismo país/tecnología.')
+
+        st.divider()
+        st.markdown(f'**Comparador de Abastecimiento: Producción vs. Aranceles y Fletes — {tech_ue}, {ronda_snapshot}**')
+        st.caption(f'Para decidir desde qué planta abastecer cada mercado en **{tech_ue}**: a la izquierda, cuánto cuesta fabricar 1 unidad en EE.UU. vs. Asia (Propia y Contratada). A la derecha, el costo unitario final de los productos vendidos en cada mercado (Costo base de fabricación + Flete y Arancel por unidad vendida).')
+        ic_ronda = df[(df['Estado'] == 'Informe de costos') & (df['Ronda'] == ronda_snapshot) & (df['Empresa'] == empresa_analisis)].copy()
+        ic_ronda['Valor'] = num(ic_ronda['Valor'])
+        col_src1, col_src2 = st.columns(2)
+        with col_src1:
+            filas_fab_src = []
+            for area_s in ['EE.UU.', 'Asia']:
+                c_int = ic_ronda[(ic_ronda['Seccion'] == 'Costo de producción interna por unidad, USD') & (ic_ronda['Subgrupo'] == area_s) & (ic_ronda['Metrica'] == tech_ue)]['Valor']
+                c_ter = ic_ronda[(ic_ronda['Seccion'] == 'Costos de fabricación contratada por unidad, USD') & (ic_ronda['Subgrupo'] == area_s) & (ic_ronda['Metrica'] == tech_ue)]['Valor']
+                v_int = float(c_int.iloc[0]) if not c_int.empty and pd.notna(c_int.iloc[0]) else 0.0
+                v_ter = float(c_ter.iloc[0]) if not c_ter.empty and pd.notna(c_ter.iloc[0]) else 0.0
+                if v_int > 0:
+                    filas_fab_src.append({'Planta': area_s, 'Modalidad': 'Propia (Interna)', 'USD/u.': v_int})
+                if v_ter > 0:
+                    filas_fab_src.append({'Planta': area_s, 'Modalidad': 'Contratada (Tercerizada)', 'USD/u.': v_ter})
+            if filas_fab_src:
+                df_fab_src = pd.DataFrame(filas_fab_src)
+                fig_fsrc = px.bar(df_fab_src, x='Planta', y='USD/u.', color='Modalidad', barmode='group',
+                                  color_discrete_map={'Propia (Interna)': MUTED_PALETTE[2], 'Contratada (Tercerizada)': MUTED_PALETTE[0]},
+                                  text=df_fab_src['USD/u.'].apply(lambda v: f'${v:,.1f}'),
+                                  title=f'Costo de Fabricación en Planta ({empresa_analisis}) — {tech_ue}')
+                fig_fsrc.update_traces(textposition='outside', cliponaxis=False)
+                mostrar(fig_fsrc, ocultar_eje_valores='y')
+            else:
+                st.info(f'{empresa_analisis} no registró producción propia ni contratada de {tech_ue} en {ronda_snapshot}.')
+        with col_src2:
+            filas_dest_src = []
+            for mkt_s in ['EE.UU.', 'Asia', 'Europa']:
+                c_tot = ic_ronda[(ic_ronda['Seccion'] == 'Costo unitario promedio por producto vendido, USD') & (ic_ronda['Subgrupo'] == mkt_s) & (ic_ronda['Metrica'] == tech_ue)]['Valor']
+                c_log = ic_ronda[(ic_ronda['Seccion'] == 'Costo de transporte incl. aranceles por producto vendido, USD') & (ic_ronda['Subgrupo'] == mkt_s) & (ic_ronda['Metrica'] == tech_ue)]['Valor']
+                v_tot = float(c_tot.iloc[0]) if not c_tot.empty and pd.notna(c_tot.iloc[0]) else 0.0
+                v_log = float(c_log.iloc[0]) if not c_log.empty and pd.notna(c_log.iloc[0]) else 0.0
+                if v_tot > 0 or v_log > 0:
+                    v_base = max(0.0, v_tot - v_log)
+                    filas_dest_src.append({'Mercado': mkt_s, 'Componente': 'Costo Base Producto', 'USD/u.': v_base})
+                    filas_dest_src.append({'Mercado': mkt_s, 'Componente': 'Flete + Arancel', 'USD/u.': v_log})
+            if filas_dest_src:
+                df_dest_src = pd.DataFrame(filas_dest_src)
+                fig_dsrc = px.bar(df_dest_src, x='Mercado', y='USD/u.', color='Componente', barmode='stack',
+                                  color_discrete_map={'Costo Base Producto': COLOR_METRICA['dinero'], 'Flete + Arancel': COLOR_METRICA['riesgo']},
+                                  text=df_dest_src['USD/u.'].apply(lambda v: f'${v:,.1f}' if v > 0 else ''),
+                                  title=f'Costo Puesto en Destino (Base + Flete/Arancel) — {tech_ue}')
+                fig_dsrc.update_traces(textposition='inside')
+                mostrar(fig_dsrc)
+            else:
+                st.info(f'{empresa_analisis} no registró ventas de {tech_ue} en {ronda_snapshot}.')
 
         st.divider()
         st.markdown(f'**Punto de equilibrio — {empresa_analisis}, {ronda_snapshot}**')
@@ -3114,6 +3251,50 @@ def seccion_finanzas():
                            'patrimonio) para la Deuda, y 1 / (1 + Deuda a patrimonio) para el Patrimonio Neto.')
             else:
                 st.info('Sin datos de Deuda a patrimonio para esta combinación.')
+
+        st.write('')
+        st.markdown('**Ubicación de Ganancias (EBT) y Presión Fiscal Efectiva por Región**')
+        st.caption('Muestra en qué región declara su ganancia antes de impuestos (EBT) cada equipo y qué % efectivo de impuestos termina pagando a nivel Global (Impuestos / EBT). '
+                   'Guía práctica de Precios de Transferencia (multiplicador 1.0x a 2.0x): cuando exportás desde una planta con impuesto más bajo (ej. Asia) hacia un mercado con impuesto más alto (ej. EE.UU. o Europa) y sin arancel ad-valorem alto, subir el multiplicador encarece la compra interna del país importador y traslada la ganancia hacia la planta exportadora para pagar menos impuesto corporativo.')
+        filas_ebt_reg = []
+        for pais_t in ['EE.UU.', 'Asia', 'Europa']:
+            pl_pt = df[(df['Estado'] == f'Cuenta de resultados, miles USD, {pais_t}') & (df['Ronda'] == ronda_snapshot)]
+            for e in COMPANIES:
+                v_ebt_p = valor_de(pl_pt, 'Beneficio antes de impuestos', e) or 0.0
+                v_imp_p = valor_de(pl_pt, 'Impuesto sobre el beneficio', e) or 0.0
+                tasa_p = (v_imp_p / v_ebt_p * 100) if v_ebt_p > 0 else 0.0
+                filas_ebt_reg.append({'Empresa': e, 'Región': pais_t, 'EBT': v_ebt_p, 'Impuesto': v_imp_p, 'TasaReg': tasa_p})
+        df_ebt_reg = pd.DataFrame(filas_ebt_reg)
+        if not df_ebt_reg.empty and df_ebt_reg['EBT'].abs().sum() > 0:
+            resumen_tax_global = {}
+            for e in COMPANIES:
+                ebt_g = valor_de(pl_ronda, 'Beneficio antes de impuestos', e) or 0.0
+                imp_g = valor_de(pl_ronda, 'Impuesto sobre el beneficio', e) or 0.0
+                resumen_tax_global[e] = (imp_g / ebt_g * 100) if ebt_g > 0 else 0.0
+            colores_reg_ebt = {'EE.UU.': MUTED_SIN_MARRON[1], 'Asia': MUTED_SIN_MARRON[2], 'Europa': MUTED_SIN_MARRON[0]}
+            fig_ebt_tax = go.Figure()
+            for pais_t in ['EE.UU.', 'Asia', 'Europa']:
+                d_pt = df_ebt_reg[df_ebt_reg['Región'] == pais_t].set_index('Empresa').reindex(COMPANIES).reset_index()
+                txt_hover = [f"EBT {pais_t}: ${format_num(r['EBT'])}<br>Impuesto {pais_t}: ${format_num(r['Impuesto'])} ({r['TasaReg']:.1f}%)" for _, r in d_pt.iterrows()]
+                fig_ebt_tax.add_trace(go.Bar(
+                    x=d_pt['Empresa'], y=d_pt['EBT'], name=f'EBT {pais_t}',
+                    marker_color=colores_reg_ebt[pais_t],
+                    text=txt_hover, hovertemplate='<b>%{x}</b><br>%{text}<extra></extra>'))
+            tot_pos = df_ebt_reg[df_ebt_reg['EBT'] > 0].groupby('Empresa')['EBT'].sum()
+            color_txt_t = BRAND_LIGHT if es_modo_oscuro() else BRAND_DARK
+            for e in COMPANIES:
+                y_top = tot_pos.get(e, 0.0)
+                t_gl = resumen_tax_global.get(e, 0.0)
+                fig_ebt_tax.add_annotation(
+                    x=e, y=y_top, text=f'<b>Tasa Ef.: {t_gl:.1f}%</b>',
+                    showarrow=False, yshift=14,
+                    font=dict(size=11, color=COLOR_CADIZ if e == MY_COMPANY else color_txt_t))
+            fig_ebt_tax.update_layout(
+                barmode='relative',
+                title=f'Beneficio antes de Impuestos (EBT) por Región y Tasa Impositiva Efectiva Global — {ronda_snapshot}',
+                yaxis_title='EBT (USD)',
+                legend=dict(orientation='h', yanchor='top', y=-0.18, xanchor='center', x=0.5))
+            mostrar(fig_ebt_tax, margen_b=85, altura=400)
 
         # ---- Rango de Industria (recortado: WACC, Apalancamiento, ROA, ROE, ROCE -- sin Spread) ----
         ejes_validos = {k: v for k, v in datos_lp.items() if len([x for x in v.values() if pd.notna(x)]) >= 2}
