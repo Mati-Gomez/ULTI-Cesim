@@ -2409,13 +2409,14 @@ def seccion_operaciones():
                     else:
                         rec_txt = f'✅ {mejor_op} (${mejor_val:,.1f}/u.)'
                 else:
-                    rec_txt = 'Sin producción en ' + empresa_analisis + (f' (benchmark industria: EE.UU. ${b_usa:,.1f} / Asia ${b_asia:,.1f})' if (b_usa or b_asia) else '')
+                    partes_bm = ([f'EE.UU. ${b_usa:,.1f}'] if b_usa is not None else []) + ([f'Asia ${b_asia:,.1f}'] if b_asia is not None else [])
+                    rec_txt = f'Sin producción en {empresa_analisis}' + (f' (benchmark industria: {" / ".join(partes_bm)})' if partes_bm else '')
                 filas_tabla_dec.append({
                     'Tecnología': tech_d,
                     f'Propia EE.UU. ({empresa_analisis})': f'${c_int_usa:,.1f}' if c_int_usa else '—',
                     f'Propia Asia ({empresa_analisis})': f'${c_int_asia:,.1f}' if c_int_asia else '—',
                     'Contratada (EE.UU. / Asia)': ' / '.join([f'${v:,.1f}' for v in (c_ter_usa, c_ter_asia) if v]) or '—',
-                    'Mejor Costo Industria (EE.UU. / Asia)': f"${b_usa:,.1f}" + (f" / ${b_asia:,.1f}" if b_asia else "") if b_usa else (f"— / ${b_asia:,.1f}" if b_asia else '—'),
+                    'Mejor Costo Industria (EE.UU. / Asia)': f'${b_usa:,.1f if b_usa is not None else 0}' if False else f"{'$' + format(b_usa, ',.1f') if b_usa is not None else '—'} / {'$' + format(b_asia, ',.1f') if b_asia is not None else '—'}",
                     'Dónde conviene producir': rec_txt,
                 })
 
