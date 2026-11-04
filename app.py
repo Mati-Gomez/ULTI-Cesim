@@ -326,6 +326,26 @@ def chart_comparacion_equipos(sub: pd.DataFrame, titulo: str, ronda=None):
     fig = px.bar(d, x='Empresa', y='Valor', color='Empresa', color_discrete_map=COLOR_MAP, title=f'{titulo} — {ronda}', text='Etiqueta')
     fig.update_traces(textposition='outside', cliponaxis=False, showlegend=False)
     mostrar(fig, ocultar_eje_valores='y')
+def _hover_yoy_textos(rondas, valores, fmt_fn=None):
+    """Construye la lista de textos de hover para cualquier serie evolutiva (x=rondas, y=valores),
+    incluyendo siempre la variación % contra el punto inmediatamente anterior de la misma serie."""
+    fmt_fn = fmt_fn or format_num
+    r_list = list(rondas)
+    v_list = [pd.to_numeric(v, errors='coerce') for v in valores]
+    out = []
+    for i, (r_act, v_act) in enumerate(zip(r_list, v_list)):
+        if pd.isna(v_act):
+            out.append('')
+            continue
+        base_txt = fmt_fn(v_act)
+        if i > 0 and pd.notna(v_list[i - 1]) and v_list[i - 1] != 0:
+            yoy = (v_act - v_list[i - 1]) / abs(v_list[i - 1]) * 100
+            r_prev_corto = str(r_list[i - 1]).replace('Año ', 'A')
+            out.append(f'{base_txt} ({yoy:+.1f}% vs. {r_prev_corto})')
+        else:
+            out.append(base_txt)
+    return out
+
 def chart_evolucion(sub: pd.DataFrame, titulo: str, altura=None):
     ev = sub.copy()
     ev['Valor'] = num(ev['Valor'])
@@ -374,8 +394,10 @@ def chart_evolucion_proyeccion(df_proy: pd.DataFrame, metric: str, region: str, 
     sub = sub.dropna(subset=['value']).sort_values('round')
     if sub.empty:
         return st.info('Sin datos para evolución.')
+    textos_p = _hover_yoy_textos(sub['round'], sub['value'])
     fig = go.Figure(go.Scatter(x=sub['round'], y=sub['value'], mode='lines+markers', name=team,
-                                line=dict(color=COLOR_MAP.get(team, COLOR_CADIZ), width=3), marker=dict(size=6)))
+                                line=dict(color=COLOR_MAP.get(team, COLOR_CADIZ), width=3), marker=dict(size=6),
+                                text=textos_p, hovertemplate=f'<b>Año %{{x}}</b><br>{team}: %{{text}}<extra></extra>'))
     fig.update_layout(title=f'Evolución de la proyección — {titulo}', xaxis_title='Año')
     mostrar(fig)
 def _techo_apilado(y):
@@ -397,11 +419,14 @@ def chart_dos_metricas_apiladas(titulo, x_a, y_a, nombre_a, color_a, tipo_a,
     general de criterio."""
     fig = go.Figure()
     def _trace(x, y, nombre, color, tipo, yaxis):
+        textos_t = _hover_yoy_textos(x, y)
         if tipo == 'bar':
-            fig.add_trace(go.Bar(x=x, y=y, name=nombre, marker_color=color, yaxis=yaxis, opacity=0.85))
+            fig.add_trace(go.Bar(x=x, y=y, name=nombre, marker_color=color, yaxis=yaxis, opacity=0.85,
+                                  customdata=textos_t, hovertemplate=f'<b>%{{x}}</b><br>{nombre}: %{{customdata}}<extra></extra>'))
         else:
             fig.add_trace(go.Scatter(x=x, y=y, name=nombre, mode='lines+markers',
-                                      line=dict(color=color, width=3), yaxis=yaxis))
+                                      line=dict(color=color, width=3), yaxis=yaxis,
+                                      text=textos_t, hovertemplate=f'<b>%{{x}}</b><br>{nombre}: %{{text}}<extra></extra>'))
     _trace(x_a, y_a, nombre_a, color_a, tipo_a, 'y1')
     _trace(x_b, y_b, nombre_b, color_b, tipo_b, 'y2')
     fig.update_layout(
@@ -925,7 +950,7 @@ def fila3_finanzas_flujo_caja(df_all, ronda_snapshot, ronda_num, df_proy):
         total = cfo + cfi + cff
         etapas = [('CFO', cfo), ('CFI', cfi), ('CFF', cff), ('= Variación Neta de Caja', total)]
         fig = go.Figure(go.Waterfall(
-            orientation='v', measure=['absolute', 'relative', 'relative', 'total'],
+            orientation='v', measure=['relative', 'relative', 'relative', 'total'],
             x=[e[0] for e in etapas], y=[v for _, v in etapas],
             text=_texto_cascada([v for _, v in etapas], base=cfo if cfo not in (0, None) else None), textposition='outside',
             # Adenda 25: convención universal de color de la app -- verde = suma (increasing),
@@ -1135,29 +1160,35 @@ def evaluar_alertas():
     if orden_prev is not None:
         ronda_prev = df[df['Ronda_Orden'] == orden_prev]['Ronda'].iloc[0]
 
-        # --- Crecimiento del Mercado vs. Crecimiento propio en unidades (por región) ---
+        # --- Crecimiento del Mercado vs. Crecimiento propio en Facturación USD (por región, acorde a diferenciación) ---
         for pais in _MERCADOS_GAP:
-            v_act_mkt = df[(df['Estado'] == f'Informe de mercado, {pais}') & (df['Metrica'] == 'Ventas, miles unidades') & (df['Ronda_Orden'] == orden_hoy)]['Valor']
-            v_prev_mkt = df[(df['Estado'] == f'Informe de mercado, {pais}') & (df['Metrica'] == 'Ventas, miles unidades') & (df['Ronda_Orden'] == orden_prev)]['Valor']
-            mkt_act = pd.to_numeric(v_act_mkt, errors='coerce').sum()
-            mkt_prev = pd.to_numeric(v_prev_mkt, errors='coerce').sum()
+            est_dm_p = f'Desglose de margen por tec, miles USD, {pais}'
+            ing_act_mkt = pd.to_numeric(df[(df['Estado'] == est_dm_p) & (df['Metrica'] == 'Ingresos por ventas') & (df['Ronda_Orden'] == orden_hoy)]['Valor'], errors='coerce').sum()
+            ing_prev_mkt = pd.to_numeric(df[(df['Estado'] == est_dm_p) & (df['Metrica'] == 'Ingresos por ventas') & (df['Ronda_Orden'] == orden_prev)]['Valor'], errors='coerce').sum()
+            ing_act_emp = pd.to_numeric(df[(df['Estado'] == est_dm_p) & (df['Metrica'] == 'Ingresos por ventas') & (df['Ronda_Orden'] == orden_hoy) & (df['Empresa'] == empresa_analisis)]['Valor'], errors='coerce').sum()
+            ing_prev_emp = pd.to_numeric(df[(df['Estado'] == est_dm_p) & (df['Metrica'] == 'Ingresos por ventas') & (df['Ronda_Orden'] == orden_prev) & (df['Empresa'] == empresa_analisis)]['Valor'], errors='coerce').sum()
 
-            v_act_emp = df[(df['Estado'] == f'Informe de mercado, {pais}') & (df['Metrica'] == 'Ventas, miles unidades') & (df['Ronda_Orden'] == orden_hoy) & (df['Empresa'] == empresa_analisis)]['Valor']
-            v_prev_emp = df[(df['Estado'] == f'Informe de mercado, {pais}') & (df['Metrica'] == 'Ventas, miles unidades') & (df['Ronda_Orden'] == orden_prev) & (df['Empresa'] == empresa_analisis)]['Valor']
-            emp_act = pd.to_numeric(v_act_emp, errors='coerce').sum()
-            emp_prev = pd.to_numeric(v_prev_emp, errors='coerce').sum()
+            u_act_mkt = pd.to_numeric(df[(df['Estado'] == f'Informe de mercado, {pais}') & (df['Metrica'] == 'Ventas, miles unidades') & (df['Ronda_Orden'] == orden_hoy)]['Valor'], errors='coerce').sum()
+            u_prev_mkt = pd.to_numeric(df[(df['Estado'] == f'Informe de mercado, {pais}') & (df['Metrica'] == 'Ventas, miles unidades') & (df['Ronda_Orden'] == orden_prev)]['Valor'], errors='coerce').sum()
+            u_act_emp = pd.to_numeric(df[(df['Estado'] == f'Informe de mercado, {pais}') & (df['Metrica'] == 'Ventas, miles unidades') & (df['Ronda_Orden'] == orden_hoy) & (df['Empresa'] == empresa_analisis)]['Valor'], errors='coerce').sum()
+            u_prev_emp = pd.to_numeric(df[(df['Estado'] == f'Informe de mercado, {pais}') & (df['Metrica'] == 'Ventas, miles unidades') & (df['Ronda_Orden'] == orden_prev) & (df['Empresa'] == empresa_analisis)]['Valor'], errors='coerce').sum()
 
-            if mkt_prev > 0 and emp_prev > 0:
-                c_mkt = (mkt_act - mkt_prev) / mkt_prev * 100
-                c_emp = (emp_act - emp_prev) / emp_prev * 100
-                brecha = c_emp - c_mkt
-                if brecha <= -2.0:
-                    niv_tr = 'critico' if (c_mkt > 0 and c_emp < 0) else 'aviso'
-                    alertas.append((niv_tr, f'Tracción en {pais}: {empresa_analisis} {c_emp:+.1f}% vs. Mercado {c_mkt:+.1f}%',
-                                    f'En unidades físicas contra {ronda_prev}, {empresa_analisis} quedó {abs(brecha):.1f} p.p. por debajo del ritmo de la región.'))
-                elif brecha >= 2.0:
-                    alertas.append(('ok', f'Tracción en {pais}: {empresa_analisis} {c_emp:+.1f}% vs. Mercado {c_mkt:+.1f}%',
-                                    f'En unidades físicas contra {ronda_prev}, {empresa_analisis} superó en +{brecha:.1f} p.p. el crecimiento de la región (ganó cuota).'))
+            if ing_prev_mkt > 0 and ing_prev_emp > 0:
+                c_ing_mkt = (ing_act_mkt - ing_prev_mkt) / ing_prev_mkt * 100
+                c_ing_emp = (ing_act_emp - ing_prev_emp) / ing_prev_emp * 100
+                brecha_ing = c_ing_emp - c_ing_mkt
+                ctx_u = ''
+                if u_prev_mkt > 0 and u_prev_emp > 0:
+                    c_u_mkt = (u_act_mkt - u_prev_mkt) / u_prev_mkt * 100
+                    c_u_emp = (u_act_emp - u_prev_emp) / u_prev_emp * 100
+                    ctx_u = f' (en volumen físico: {empresa_analisis} {c_u_emp:+.1f}% vs. Mercado {c_u_mkt:+.1f}%)'
+                if brecha_ing <= -2.0:
+                    niv_tr = 'critico' if (c_ing_mkt > 0 and c_ing_emp < 0) else 'aviso'
+                    alertas.append((niv_tr, f'Facturación en {pais}: {empresa_analisis} {c_ing_emp:+.1f}% vs. Mercado {c_ing_mkt:+.1f}%',
+                                    f'En valor (USD) contra {ronda_prev}, {empresa_analisis} quedó {abs(brecha_ing):.1f} p.p. por debajo del crecimiento de la región{ctx_u}.'))
+                elif brecha_ing >= 2.0:
+                    alertas.append(('ok', f'Facturación en {pais}: {empresa_analisis} {c_ing_emp:+.1f}% vs. Mercado {c_ing_mkt:+.1f}%',
+                                    f'En valor (USD) contra {ronda_prev}, {empresa_analisis} superó en +{brecha_ing:.1f} p.p. el crecimiento de la región{ctx_u}.'))
 
             # --- Despegue tecnológico en el mix de demanda regional (>= 5 p.p. de salto en un año) ---
             dem_tot_act = pd.to_numeric(df[(df['Estado'] == f'Informe de mercado, {pais}') & (df['Metrica'] == 'Demanda, miles unidades') & (df['Ronda_Orden'] == orden_hoy)]['Valor'], errors='coerce').sum()
@@ -1609,7 +1640,7 @@ def _seccion_resultado_resumen():
             depr, ints, imp, ben = g('Depreciación de Activos Fijos'), g('Gastos financieros netos'), g('Impuesto sobre el beneficio'), g('Beneficio de la ronda')
             _valores_puente = [ingresos, -costos_prod, -costos_op, -depr, -ints, -imp, ben]
             fig = go.Figure(go.Waterfall(
-                orientation='v', measure=['absolute', 'relative', 'relative', 'relative', 'relative', 'relative', 'total'],
+                orientation='v', measure=['relative', 'relative', 'relative', 'relative', 'relative', 'relative', 'total'],
                 x=['Ingresos', '- Prod', '- Op/Admin', '- Depr', '- Int', '- Imp', '= Neto'],
                 y=_valores_puente,
                 # Adenda 25: % entre paréntesis sobre Ingresos (primera barra, el ancla del puente).
@@ -1796,21 +1827,24 @@ def _seccion_resultado_mercado_macro():
             return st.info(f'Sin datos para graficar "Dinámica de Mercado — {titulo_sufijo}".')
         spline = dict(shape='spline', smoothing=1.3)
         fig = go.Figure()
+        txt_ven = _hover_yoy_textos(d['Ronda'], d['Ventas'], fmt_fn=lambda v: f'{v:,.0f} mil u.')
+        txt_dem = _hover_yoy_textos(d['Ronda'], d['DemandaTotal'], fmt_fn=lambda v: f'{v:,.0f} mil u.')
+        txt_val = _hover_yoy_textos(d['Ronda'], d['Valoracion'], fmt_fn=lambda v: f'${format_num(v)} USD')
         fig.add_trace(go.Scatter(x=d['Ronda'], y=d['Ventas'], name='Ventas efectivas de la industria',
                                   mode='lines+markers', line=dict(color=COLOR_METRICA['eficiencia'], width=3, **spline),
-                                  marker=dict(size=6), yaxis='y1',
-                                  hovertemplate='%{x} — Ventas: %{y:,.0f} mil u.<extra></extra>'))
+                                  marker=dict(size=6), yaxis='y1', text=txt_ven,
+                                  hovertemplate='<b>%{x}</b> — Ventas: %{text}<extra></extra>'))
         fig.add_trace(go.Scatter(x=d['Ronda'], y=d['DemandaTotal'], name='Demanda Total (Ventas + Insatisfecha)',
                                   mode='lines+markers', line=dict(color=COLOR_METRICA['riesgo'], width=2, dash='dot', **spline),
-                                  marker=dict(size=5), yaxis='y1',
-                                  hovertemplate='%{x} — Demanda Total: %{y:,.0f} mil u.<extra></extra>'))
-        texto_val = [f'{r} — Valoración: ${format_num(v)} USD' for r, v in zip(d['Ronda'], d['Valoracion'])]
+                                  marker=dict(size=5), yaxis='y1', text=txt_dem,
+                                  hovertemplate='<b>%{x}</b> — Demanda Total: %{text}<extra></extra>'))
         fig.add_trace(go.Scatter(x=d['Ronda'], y=d['Valoracion'], name='Valoración total de mercado, USD',
                                   mode='lines+markers', line=dict(color=COLOR_METRICA['dinero'], width=3, **spline),
-                                  marker=dict(size=6), yaxis='y2', text=texto_val,
-                                  hovertemplate='%{text}<extra></extra>'))
+                                  marker=dict(size=6), yaxis='y2', text=txt_val,
+                                  hovertemplate='<b>%{x}</b> — Valoración: %{text}<extra></extra>'))
         fig.update_layout(
             title=f'Dinámica de Mercado — {titulo_sufijo}',
+            xaxis=dict(categoryorder='array', categoryarray=RONDAS_ORDENADAS),
             yaxis=dict(title='Miles de unidades', side='left', rangemode='tozero', showgrid=False),
             yaxis2=dict(title='Valoración, USD', side='right', overlaying='y', showgrid=False, rangemode='tozero'),
             legend=dict(orientation='h', yanchor='top', y=-0.25, xanchor='center', x=0.5))
@@ -1898,19 +1932,21 @@ def _seccion_resultado_mercado_macro():
         spline = dict(shape='spline', smoothing=1.3)
         fig_tech = go.Figure()
         for tech in tech_mostrar:
-            d_t = serie_tech[serie_tech['Tecnología'] == tech].dropna(subset=['DemandaTotal', 'Valoracion'], how='all')
+            d_t = serie_tech[serie_tech['Tecnología'] == tech].dropna(subset=['DemandaTotal', 'Valoracion'], how='all').sort_values('Ronda_Orden')
             color_t = COLOR_TECH_MERCADO.get(tech, MUTED_SIN_MARRON[0])
+            txt_dem_t = _hover_yoy_textos(d_t['Ronda'], d_t['DemandaTotal'], fmt_fn=lambda v: f'{v:,.0f} mil u.')
+            txt_val_t = _hover_yoy_textos(d_t['Ronda'], d_t['Valoracion'], fmt_fn=lambda v: f'${format_num(v)} USD')
             fig_tech.add_trace(go.Scatter(x=d_t['Ronda'], y=d_t['DemandaTotal'], name=f'{tech} — Demanda Total',
                                            mode='lines+markers', line=dict(color=color_t, width=3, **spline),
-                                           marker=dict(size=6), yaxis='y1',
-                                           hovertemplate=f'%{{x}} — {tech} Demanda: ' + '%{y:,.0f} mil u.<extra></extra>'))
-            texto_val_t = [f'{r} — {tech} Valoración: ${format_num(v)} USD' for r, v in zip(d_t['Ronda'], d_t['Valoracion'])]
+                                           marker=dict(size=6), yaxis='y1', text=txt_dem_t,
+                                           hovertemplate=f'<b>%{{x}}</b> — {tech} Demanda: %{{text}}<extra></extra>'))
             fig_tech.add_trace(go.Scatter(x=d_t['Ronda'], y=d_t['Valoracion'], name=f'{tech} — Valoración',
                                            mode='lines+markers', line=dict(color=color_t, width=2, dash='dash', **spline),
-                                           marker=dict(size=5), yaxis='y2', text=texto_val_t,
-                                           hovertemplate='%{text}<extra></extra>'))
+                                           marker=dict(size=5), yaxis='y2', text=txt_val_t,
+                                           hovertemplate=f'<b>%{{x}}</b> — {tech} Valoración: %{{text}}<extra></extra>'))
         fig_tech.update_layout(
             title=f'Dinámica de Mercado por Tecnología — {pais_tech_sel}',
+            xaxis=dict(categoryorder='array', categoryarray=RONDAS_ORDENADAS),
             yaxis=dict(title='Miles de unidades', side='left', rangemode='tozero', showgrid=False),
             yaxis2=dict(title='Valoración, USD', side='right', overlaying='y', showgrid=False, rangemode='tozero'),
             legend=dict(orientation='h', yanchor='top', y=-0.3, xanchor='center', x=0.5))
@@ -2452,7 +2488,7 @@ def seccion_operaciones():
             etapas_ue.extend([('- Logística/Arancel', c_flete), ('- Caract.', c_caract), ('= Margen Unitario', m_bruto)])
             _valores_margen_ue = [v for _, v in etapas_ue]
             fig_ue = go.Figure(go.Waterfall(
-                orientation='v', measure=['absolute'] + ['relative'] * (len(etapas_ue) - 2) + ['total'],
+                orientation='v', measure=['relative'] * (len(etapas_ue) - 1) + ['total'],
                 x=[k for k, _ in etapas_ue],
                 y=_valores_margen_ue,
                 text=_texto_cascada(_valores_margen_ue), textposition='outside',
@@ -2635,7 +2671,7 @@ def seccion_operaciones():
             inv_fin = d.get('Inventario final', 0) or 0
             _valores_inv = [inv_ini, prod, imp, -ventas, -exp, inv_fin]
             fig_inv = go.Figure(go.Waterfall(
-                orientation='v', measure=['absolute', 'relative', 'relative', 'relative', 'relative', 'total'],
+                orientation='v', measure=['relative', 'relative', 'relative', 'relative', 'relative', 'total'],
                 x=['Inv Inicial', '+ Prod', '+ Import', '- Ventas', '- Export', '= Inv Final'],
                 y=_valores_inv,
                 # Adenda 25: % entre paréntesis sobre el Inventario Inicial (primera barra).
@@ -2913,71 +2949,97 @@ def seccion_finanzas():
         # duplicarlo no suma.
         st.write('')
         st.subheader('Retorno al Accionista')
-        # Fix (a pedido del equipo, viendo la referencia que mandó): el eje X tiene que ser la
-        # EMPRESA (ordenada de mayor a menor dividendo acumulado, mismo criterio que la referencia),
-        # no el año -- el año pasa a ser el segmento apilado DENTRO de cada barra de empresa. Año 0
-        # se excluye a pedido del equipo (y porque, verificado, los 7 equipos pagan $0 en Año 0 -- es
-        # la ronda inicial, antes de cualquier decisión de dividendos).
+        vista_ret_acc = st.radio(
+            'Vista de distribución de caja al accionista',
+            ['Mix Acumulado: Dividendos vs. Recompra de Acciones', 'Desglose por Año — Dividendos', 'Desglose por Año — Recompra de Acciones'],
+            horizontal=True, key='radio_vista_ret_acc')
+
         div_pagados = df[(df['Estado'] == 'Flujo de efectivo de casa matriz, miles USD') &
                           (df['Metrica'] == 'Dividendos')].copy()
         div_pagados['Valor'] = num(div_pagados['Valor']).abs()
         div_pagados = div_pagados.dropna(subset=['Valor'])
         div_pagados = div_pagados[div_pagados['Ronda_Orden'] > 0]
-        if div_pagados.empty:
-            st.info('Sin datos de dividendos pagados (fuera de Año 0) para este entorno.')
-        else:
-            totales_emp = div_pagados.groupby('Empresa')['Valor'].sum().sort_values(ascending=False)
-            empresas_orden = totales_emp.index.tolist()
-            rondas_presentes = div_pagados[['Ronda', 'Ronda_Orden']].drop_duplicates().sort_values('Ronda_Orden')
-            nombres_ronda = rondas_presentes['Ronda'].tolist()
-            n_r = len(nombres_ronda)
-            # Fix de legibilidad + identidad (a pedido del equipo, viendo cómo quedó en la web: "las
-            # etiquetas... tiene que poder verse todo en un primer vistazo", "con CADIZ mantengamos
-            # ese tono lila para diferenciarnos"). Dos ajustes:
-            #  1) CADIZ usa su propia rampa (lila, _ramp_secuencial(COLOR_CADIZ, ...)) y el resto de
-            #     los equipos comparten la rampa azul neutra -- mismo criterio de identidad que
-            #     COLOR_MAP ya usa en el resto del tablero (CADIZ = lila, rivales = familia neutra),
-            #     aplicado acá sobre CADA escalón de año en vez de un solo color por empresa, para no
-            #     perder la lectura de "qué año es cada segmento" (sigue siendo claro->oscuro).
-            #  2) Etiqueta de texto SOLO en los segmentos grandes (>= 5% del total de la empresa con
-            #     más dividendos acumulados) -- la skill de dataviz pide "etiquetas directas
-            #     selectivas, nunca un número en cada punto"; los segmentos chicos (ej. Año 1 de un
-            #     equipo que recién empezó a pagar) quedan sin texto inline pero siguen visibles al
-            #     pasar el mouse (hover).
-            ramp_cadiz = _ramp_secuencial(COLOR_CADIZ, n_r)
-            ramp_rival = _ramp_secuencial(COLOR_METRICA['dinero'], n_r)
-            tonos_por_ronda_empresa = {}
-            for emp in empresas_orden:
-                ramp = ramp_cadiz if emp == MY_COMPANY else ramp_rival
-                for i, r_nombre in enumerate(nombres_ronda):
-                    tonos_por_ronda_empresa[(emp, r_nombre)] = ramp[i]
-            umbral_label = totales_emp.max() * 0.05
-            fig_divp = go.Figure()
-            for r_nombre in nombres_ronda:
-                d_r = div_pagados[div_pagados['Ronda'] == r_nombre].set_index('Empresa').reindex(empresas_orden)
-                fig_divp.add_trace(go.Bar(
-                    x=empresas_orden, y=d_r['Valor'], name=r_nombre,
-                    marker_color=[tonos_por_ronda_empresa[(emp, r_nombre)] for emp in empresas_orden],
-                    text=d_r['Valor'].apply(lambda v: format_num(v) if pd.notna(v) and v >= umbral_label else ''),
-                    textposition='inside', textfont=dict(size=11),
-                    customdata=d_r['Valor'].apply(lambda v: format_num(v) if pd.notna(v) else 'sin dato'),
-                    hovertemplate=f'<b>%{{x}}</b><br>{r_nombre}: %{{customdata}}<extra></extra>'))
-            fig_divp.update_layout(barmode='stack', title='Dividendos Pagados Acumulados por Empresa',
-                                    yaxis_title='USD', xaxis=dict(categoryorder='array', categoryarray=empresas_orden),
-                                    legend=dict(orientation='h', yanchor='top', y=-0.18, xanchor='center', x=0.5))
+
+        recompras_raw = df[(df['Estado'] == 'Flujo de efectivo de casa matriz, miles USD') &
+                            (df['Metrica'] == 'Recaudación de emisión de patrimonio neto y recompras')].copy()
+        recompras_raw['Valor'] = (-num(recompras_raw['Valor'])).clip(lower=0.0)
+        recompras_raw = recompras_raw.dropna(subset=['Valor'])
+        recompras_raw = recompras_raw[recompras_raw['Ronda_Orden'] > 0]
+
+        if vista_ret_acc == 'Mix Acumulado: Dividendos vs. Recompra de Acciones':
+            sum_div = div_pagados.groupby('Empresa')['Valor'].sum().reindex(COMPANIES).fillna(0.0)
+            sum_rec = recompras_raw.groupby('Empresa')['Valor'].sum().reindex(COMPANIES).fillna(0.0)
+            tot_dist = (sum_div + sum_rec).sort_values(ascending=False)
+            empresas_orden = tot_dist.index.tolist()
+            umbral_mix = tot_dist.max() * 0.06 if tot_dist.max() > 0 else 1.0
+            fig_mix_ret = go.Figure()
+            fig_mix_ret.add_trace(go.Bar(
+                x=empresas_orden, y=[sum_div[e] for e in empresas_orden], name='Dividendos Acumulados',
+                marker_color=[COLOR_CADIZ if e == MY_COMPANY else COLOR_METRICA['dinero'] for e in empresas_orden],
+                text=[format_num(sum_div[e]) if sum_div[e] >= umbral_mix else '' for e in empresas_orden],
+                textposition='inside', textfont=dict(size=11),
+                customdata=[format_num(sum_div[e]) for e in empresas_orden],
+                hovertemplate='<b>%{x}</b><br>Dividendos Acumulados: %{customdata}<extra></extra>'))
+            fig_mix_ret.add_trace(go.Bar(
+                x=empresas_orden, y=[sum_rec[e] for e in empresas_orden], name='Recompra de Acciones Acumulada',
+                marker_color=[_hex_a_rgba(COLOR_CADIZ, 0.55) if e == MY_COMPANY else COLOR_METRICA['riesgo'] for e in empresas_orden],
+                text=[format_num(sum_rec[e]) if sum_rec[e] >= umbral_mix else '' for e in empresas_orden],
+                textposition='inside', textfont=dict(size=11),
+                customdata=[format_num(sum_rec[e]) for e in empresas_orden],
+                hovertemplate='<b>%{x}</b><br>Recompra de Acciones Acumulada: %{customdata}<extra></extra>'))
             color_total = BRAND_LIGHT if es_modo_oscuro() else BRAND_DARK
             for emp in empresas_orden:
-                fig_divp.add_annotation(x=emp, y=totales_emp[emp], text=f'<b>{format_num(totales_emp[emp])}</b>',
-                                         showarrow=False, yshift=14,
-                                         font=dict(size=13, color=COLOR_CADIZ if emp == MY_COMPANY else color_total))
-            mostrar(fig_divp, margen_b=90, altura=420)
-            st.caption('Monto real pagado a la casa matriz en concepto de dividendos (RDOS de CESIM), apilado '
-                       'por año dentro de cada empresa -- ordenadas de mayor a menor dividendo acumulado '
-                       '(Año 0 no se incluye: ningún equipo paga dividendos ese año). ULTI en tono lila para '
-                       'diferenciarse; los segmentos chicos no muestran número para no saturar la lectura, '
-                       'pero el valor exacto aparece al pasar el mouse. Para cruzarlo contra el retorno total '
-                       'al accionista de cada equipo, ver "Retorno Total Acumulado del Accionista (TSR)" en '
-                       'Resultados.')
+                fig_mix_ret.add_annotation(
+                    x=emp, y=tot_dist[emp], text=f'<b>{format_num(tot_dist[emp])}</b>',
+                    showarrow=False, yshift=14,
+                    font=dict(size=13, color=COLOR_CADIZ if emp == MY_COMPANY else color_total))
+            fig_mix_ret.update_layout(
+                barmode='stack', title='Caja Total Devuelta al Accionista (Dividendos + Recompras de Acciones)',
+                yaxis_title='USD', xaxis=dict(categoryorder='array', categoryarray=empresas_orden),
+                legend=dict(orientation='h', yanchor='top', y=-0.18, xanchor='center', x=0.5))
+            mostrar(fig_mix_ret, margen_b=90, altura=420)
+            st.caption('Compara las dos vías reales para devolver caja al accionista sin recargar el gráfico: '
+                       'Dividendos pagados (barra inferior) + Recompra de acciones acumulada (barra superior). '
+                       'Cambiá el selector de arriba si querés ver en qué año puntual se ejecutó cada desembolso.')
+        else:
+            es_div = vista_ret_acc.endswith('Dividendos')
+            df_serie_ret = div_pagados if es_div else recompras_raw
+            titulo_ret = 'Dividendos Pagados Acumulados por Empresa (Desglose por Año)' if es_div else 'Recompra de Acciones Acumulada por Empresa (Desglose por Año)'
+            if df_serie_ret.empty or df_serie_ret['Valor'].sum() == 0:
+                st.info('Sin desembolsos registrados para esta modalidad.')
+            else:
+                totales_emp = df_serie_ret.groupby('Empresa')['Valor'].sum().reindex(COMPANIES).fillna(0.0).sort_values(ascending=False)
+                empresas_orden = totales_emp.index.tolist()
+                rondas_presentes = df_serie_ret[['Ronda', 'Ronda_Orden']].drop_duplicates().sort_values('Ronda_Orden')
+                nombres_ronda = rondas_presentes['Ronda'].tolist()
+                n_r = len(nombres_ronda)
+                ramp_cadiz = _ramp_secuencial(COLOR_CADIZ, n_r)
+                ramp_rival = _ramp_secuencial(COLOR_METRICA['dinero'] if es_div else COLOR_METRICA['riesgo'], n_r)
+                tonos_por_ronda_empresa = {}
+                for emp in empresas_orden:
+                    ramp = ramp_cadiz if emp == MY_COMPANY else ramp_rival
+                    for i, r_nombre in enumerate(nombres_ronda):
+                        tonos_por_ronda_empresa[(emp, r_nombre)] = ramp[i]
+                umbral_label = totales_emp.max() * 0.05
+                fig_divp = go.Figure()
+                for r_nombre in nombres_ronda:
+                    d_r = df_serie_ret[df_serie_ret['Ronda'] == r_nombre].set_index('Empresa').reindex(empresas_orden)
+                    fig_divp.add_trace(go.Bar(
+                        x=empresas_orden, y=d_r['Valor'], name=r_nombre,
+                        marker_color=[tonos_por_ronda_empresa[(emp, r_nombre)] for emp in empresas_orden],
+                        text=d_r['Valor'].apply(lambda v: format_num(v) if pd.notna(v) and v >= umbral_label else ''),
+                        textposition='inside', textfont=dict(size=11),
+                        customdata=d_r['Valor'].apply(lambda v: format_num(v) if pd.notna(v) else 'sin dato'),
+                        hovertemplate=f'<b>%{{x}}</b><br>{r_nombre}: %{{customdata}}<extra></extra>'))
+                fig_divp.update_layout(barmode='stack', title=titulo_ret,
+                                        yaxis_title='USD', xaxis=dict(categoryorder='array', categoryarray=empresas_orden),
+                                        legend=dict(orientation='h', yanchor='top', y=-0.18, xanchor='center', x=0.5))
+                color_total = BRAND_LIGHT if es_modo_oscuro() else BRAND_DARK
+                for emp in empresas_orden:
+                    fig_divp.add_annotation(x=emp, y=totales_emp[emp], text=f'<b>{format_num(totales_emp[emp])}</b>',
+                                             showarrow=False, yshift=14,
+                                             font=dict(size=13, color=COLOR_CADIZ if emp == MY_COMPANY else color_total))
+                mostrar(fig_divp, margen_b=90, altura=420)
 
         # ---- Bloque 3: Riesgo Competitivo ----
         # Adenda 37 (a pedido del equipo, inspirado en un gráfico de referencia de un profesor:
@@ -3254,8 +3316,8 @@ def seccion_finanzas():
 
         st.write('')
         st.markdown('**Ubicación de Ganancias (EBT) y Presión Fiscal Efectiva por Región**')
-        st.caption('Muestra en qué región declara su ganancia antes de impuestos (EBT) cada equipo y qué % efectivo de impuestos termina pagando a nivel Global (Impuestos / EBT). '
-                   'Guía práctica de Precios de Transferencia (multiplicador 1.0x a 2.0x): cuando exportás desde una planta con impuesto más bajo (ej. Asia) hacia un mercado con impuesto más alto (ej. EE.UU. o Europa) y sin arancel ad-valorem alto, subir el multiplicador encarece la compra interna del país importador y traslada la ganancia hacia la planta exportadora para pagar menos impuesto corporativo.')
+        st.caption('Muestra en qué región declara su ganancia antes de impuestos (EBT) cada equipo y cuánto paga de impuesto corporativo. '
+                   'Cuando una región tiene pérdidas acumuladas de rondas previas (quebranto impositivo), su impuesto pagado es $0 (0.0%) hasta agotar ese saldo a favor.')
         filas_ebt_reg = []
         for pais_t in ['EE.UU.', 'Asia', 'Europa']:
             pl_pt = df[(df['Estado'] == f'Cuenta de resultados, miles USD, {pais_t}') & (df['Ronda'] == ronda_snapshot)]
@@ -3266,35 +3328,38 @@ def seccion_finanzas():
                 filas_ebt_reg.append({'Empresa': e, 'Región': pais_t, 'EBT': v_ebt_p, 'Impuesto': v_imp_p, 'TasaReg': tasa_p})
         df_ebt_reg = pd.DataFrame(filas_ebt_reg)
         if not df_ebt_reg.empty and df_ebt_reg['EBT'].abs().sum() > 0:
-            resumen_tax_global = {}
-            for e in COMPANIES:
-                ebt_g = valor_de(pl_ronda, 'Beneficio antes de impuestos', e) or 0.0
-                imp_g = valor_de(pl_ronda, 'Impuesto sobre el beneficio', e) or 0.0
-                resumen_tax_global[e] = (imp_g / ebt_g * 100) if ebt_g > 0 else 0.0
             colores_reg_ebt = {'EE.UU.': MUTED_SIN_MARRON[1], 'Asia': MUTED_SIN_MARRON[2], 'Europa': MUTED_SIN_MARRON[0]}
             fig_ebt_tax = go.Figure()
             for pais_t in ['EE.UU.', 'Asia', 'Europa']:
                 d_pt = df_ebt_reg[df_ebt_reg['Región'] == pais_t].set_index('Empresa').reindex(COMPANIES).reset_index()
-                txt_hover = [f"EBT {pais_t}: ${format_num(r['EBT'])}<br>Impuesto {pais_t}: ${format_num(r['Impuesto'])} ({r['TasaReg']:.1f}%)" for _, r in d_pt.iterrows()]
+                txt_hover = [f"EBT {pais_t}: ${format_num(r['EBT'])}<br>Impuesto pagado: ${format_num(r['Impuesto'])} ({r['TasaReg']:.1f}% sobre EBT de {pais_t})" for _, r in d_pt.iterrows()]
                 fig_ebt_tax.add_trace(go.Bar(
                     x=d_pt['Empresa'], y=d_pt['EBT'], name=f'EBT {pais_t}',
                     marker_color=colores_reg_ebt[pais_t],
-                    text=txt_hover, hovertemplate='<b>%{x}</b><br>%{text}<extra></extra>'))
+                    customdata=txt_hover, hovertemplate='<b>%{x}</b><br>%{customdata}<extra></extra>'))
             tot_pos = df_ebt_reg[df_ebt_reg['EBT'] > 0].groupby('Empresa')['EBT'].sum()
+            imp_tot = df_ebt_reg.groupby('Empresa')['Impuesto'].sum()
             color_txt_t = BRAND_LIGHT if es_modo_oscuro() else BRAND_DARK
             for e in COMPANIES:
                 y_top = tot_pos.get(e, 0.0)
-                t_gl = resumen_tax_global.get(e, 0.0)
+                ebt_pos_e = tot_pos.get(e, 0.0)
+                imp_e = imp_tot.get(e, 0.0)
+                t_pos = (imp_e / ebt_pos_e * 100) if ebt_pos_e > 0 else 0.0
+                etq_top = f'<b>Imp.: ${format_num(imp_e)} ({t_pos:.0f}%)</b>' if imp_e > 0 else '<b>Imp.: $0 (0%)</b>'
                 fig_ebt_tax.add_annotation(
-                    x=e, y=y_top, text=f'<b>Tasa Ef.: {t_gl:.1f}%</b>',
+                    x=e, y=y_top, text=etq_top,
                     showarrow=False, yshift=14,
                     font=dict(size=11, color=COLOR_CADIZ if e == MY_COMPANY else color_txt_t))
             fig_ebt_tax.update_layout(
                 barmode='relative',
-                title=f'Beneficio antes de Impuestos (EBT) por Región y Tasa Impositiva Efectiva Global — {ronda_snapshot}',
+                title=f'Beneficio antes de Impuestos (EBT) por Región e Impuesto Total Pagado — {ronda_snapshot}',
                 yaxis_title='EBT (USD)',
                 legend=dict(orientation='h', yanchor='top', y=-0.18, xanchor='center', x=0.5))
             mostrar(fig_ebt_tax, margen_b=85, altura=400)
+
+        #-----------------------------------------------------------------
+        # 8. RRHH -> Personal y Talento: Add 7-team benchmark of I+D Headcount, Salary & Efficiency Multiplier
+        #-----------------------------------------------------------------
 
         # ---- Rango de Industria (recortado: WACC, Apalancamiento, ROA, ROE, ROCE -- sin Spread) ----
         ejes_validos = {k: v for k, v in datos_lp.items() if len([x for x in v.values() if pd.notna(x)]) >= 2}
@@ -3408,6 +3473,64 @@ def seccion_rrhh_sostenibilidad():
             else:
                 st.info('Sin datos de capacitación para este equipo.')
 
+        st.divider()
+        st.subheader(f'Benchmark Competitivo de I+D y Talento — {ronda_snapshot}')
+        st.caption('Comparativa de los 7 equipos en el año seleccionado: dotación de ingenieros de I+D vs. multiplicador de eficiencia (lo que define la capacidad real de desarrollo propio) y política salarial vs. rotación.')
+        rrhh_snap = df[(df['Estado'] == 'Informe de RRHH') & (df['Ronda'] == ronda_snapshot)].copy()
+        rrhh_snap['Valor'] = num(rrhh_snap['Valor'])
+        if not rrhh_snap.empty:
+            col_b1, col_b2 = st.columns(2)
+            with col_b1:
+                hc_s = rrhh_snap[rrhh_snap['Metrica'] == 'Número de personal de I+D, esta ronda'].set_index('Empresa')['Valor']
+                ef_s = rrhh_snap[rrhh_snap['Metrica'] == 'Multiplicador de la eficiencia de RRHH'].set_index('Empresa')['Valor']
+                df_b1 = pd.DataFrame({'Empresa': COMPANIES, 'Personal': [hc_s.get(e) for e in COMPANIES], 'Eficiencia': [ef_s.get(e) for e in COMPANIES]}).dropna()
+                if not df_b1.empty:
+                    df_b1['CapacidadEfectiva'] = df_b1['Personal'] * df_b1['Eficiencia']
+                    df_b1 = df_b1.sort_values('CapacidadEfectiva', ascending=False)
+                    fig_b1 = go.Figure()
+                    fig_b1.add_trace(go.Bar(
+                        x=df_b1['Empresa'], y=df_b1['Personal'], name='Personal I+D (personas)',
+                        marker_color=[COLOR_CADIZ if e == MY_COMPANY else MUTED_PALETTE[0] for e in df_b1['Empresa']],
+                        text=df_b1['Personal'].apply(lambda v: f'{v:,.0f}'), textposition='inside', yaxis='y1',
+                        hovertemplate='<b>%{x}</b><br>Personal I+D: %{y:,.0f} ing.<extra></extra>'))
+                    fig_b1.add_trace(go.Scatter(
+                        x=df_b1['Empresa'], y=df_b1['Eficiencia'], name='Multiplicador Eficiencia',
+                        mode='lines+markers', line=dict(color=COLOR_METRICA['eficiencia'], width=3),
+                        marker=dict(size=9, color=COLOR_METRICA['eficiencia']), yaxis='y2',
+                        hovertemplate='<b>%{x}</b><br>Multiplicador eficiencia: %{y:.3f}x<extra></extra>'))
+                    fig_b1.update_layout(
+                        title=f'Dotación de I+D y Multiplicador de Eficiencia — {ronda_snapshot}',
+                        yaxis=dict(title='Ingenieros I+D', side='left', rangemode='tozero'),
+                        yaxis2=dict(title='Multiplicador (x)', side='right', overlaying='y', showgrid=False),
+                        legend=dict(orientation='h', yanchor='top', y=-0.22, xanchor='center', x=0.5))
+                    mostrar(fig_b1)
+            with col_b2:
+                sal_s = rrhh_snap[rrhh_snap['Metrica'] == 'Salario mensual, USD'].set_index('Empresa')['Valor']
+                rot_s = rrhh_snap[rrhh_snap['Metrica'] == 'Rotación de personal, %'].set_index('Empresa')['Valor']
+                cap_s = rrhh_snap[rrhh_snap['Metrica'] == 'Presupuesto mensual para capacitación, USD'].set_index('Empresa')['Valor']
+                df_b2 = pd.DataFrame({'Empresa': COMPANIES, 'Salario': [sal_s.get(e) for e in COMPANIES],
+                                      'Rotacion': [rot_s.get(e) for e in COMPANIES],
+                                      'Capacitacion': [cap_s.get(e, 300) for e in COMPANIES]}).dropna(subset=['Salario', 'Rotacion'])
+                if not df_b2.empty:
+                    fig_b2 = px.scatter(
+                        df_b2, x='Salario', y='Rotacion', size='Capacitacion', color='Empresa',
+                        color_discrete_map=COLOR_MAP, text='Empresa',
+                        title=f'Salario Mensual vs. Rotación (tamaño = Capacitación) — {ronda_snapshot}')
+                    fig_b2.update_traces(textposition='top center', showlegend=False)
+                    fig_b2.update_layout(xaxis_title='Salario mensual (USD)', yaxis_title='Rotación de personal (%)')
+                    linea_media(fig_b2, df_b2['Salario'].mean(), eje='x', etiqueta='Salario Prom')
+                    linea_media(fig_b2, df_b2['Rotacion'].mean(), eje='y', etiqueta='Rotación Prom')
+                    mostrar(fig_b2)
+
+        st.write('')
+        col_ev_r1, col_ev_r2 = st.columns(2)
+        with col_ev_r1:
+            sub_ef_all = df[(df['Estado'] == 'Informe de RRHH') & (df['Metrica'] == 'Multiplicador de la eficiencia de RRHH')].copy()
+            chart_evolucion(sub_ef_all, 'Multiplicador de Eficiencia de RRHH (7 equipos)')
+        with col_ev_r2:
+            sub_hc_all = df[(df['Estado'] == 'Informe de RRHH') & (df['Metrica'] == 'Número de personal de I+D, esta ronda')].copy()
+            chart_evolucion(sub_hc_all, 'Dotación de Personal de I+D (7 equipos)')
+
     with bloque_sost:
         # ---- Certificación ESG + Evolución del ESG (nuevo, Adenda 34, a pedido del equipo) ----
         st.subheader('Certificación de sostenibilidad')
@@ -3465,13 +3588,16 @@ def seccion_rrhh_sostenibilidad():
             COLOR_ESG_COMP = dict(zip(_COMPONENTES_ESG, MUTED_SIN_MARRON))
             fig_esg_comp = go.Figure()
             for metrica in _COMPONENTES_ESG:
-                d_m = esg_componentes[esg_componentes['Metrica'] == metrica]
+                d_m = esg_componentes[esg_componentes['Metrica'] == metrica].sort_values('Ronda_Orden')
                 if d_m.empty:
                     continue
+                txt_esg_c = _hover_yoy_textos(d_m['Ronda'], d_m['Valor'], fmt_fn=lambda v: f'{v:,.2f}')
                 fig_esg_comp.add_trace(go.Scatter(x=d_m['Ronda'], y=d_m['Valor'], mode='lines+markers', name=metrica,
                                                    line=dict(color=COLOR_ESG_COMP[metrica], width=2.5),
-                                                   marker=dict(size=6)))
+                                                   marker=dict(size=6), text=txt_esg_c,
+                                                   hovertemplate=f'<b>%{{x}}</b><br>{metrica}: %{{text}}<extra></extra>'))
             fig_esg_comp.update_layout(title=f'Componentes del ESG — {empresa_analisis}',
+                                        xaxis=dict(categoryorder='array', categoryarray=RONDAS_ORDENADAS),
                                         legend=dict(orientation='h', yanchor='top', y=-0.2, xanchor='center', x=0.5))
             mostrar(fig_esg_comp)
             st.caption(f'Los 3 componentes que arman la "Reputación ESG" de {empresa_analisis} (gráfico de arriba).')
