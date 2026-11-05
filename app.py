@@ -2305,14 +2305,16 @@ def seccion_operaciones():
 
         st.divider()
         st.markdown('**Curva de Aprendizaje por Región y Mapa de Decisión de Producción (Dónde y Qué Producir)**')
-        st.caption('A la izquierda: evolución año a año del costo unitario de fabricación propia en **EE.UU.** vs. **Asia** por separado (con el volumen producido acumulado en el tooltip). '
-                   'Abajo: comparativa de costos unitarios de todas las tecnologías en simultáneo (Propia EE.UU., Propia Asia, Contratada y Mejor Rival) para ver de un vistazo qué tecnología conviene fabricar en cada planta.')
-        costo_hist = df[(df['Estado'] == 'Informe de costos') &
-                         (df['Seccion'] == 'Costo de producción interna por unidad, USD') &
-                         (df['Subgrupo'].isin(['EE.UU.', 'Asia'])) &
-                         (df['Empresa'] == empresa_analisis)].copy()
-        costo_hist['Valor'] = num(costo_hist['Valor'])
-        costo_hist = costo_hist.dropna(subset=['Valor']).sort_values('Ronda_Orden')
+        st.caption('Arriba: evolución año a año de las 4 tecnologías en **EE.UU.** (izquierda) y **Asia** (derecha) — línea sólida = costo propio de '
+                   f'{empresa_analisis}; línea punteada = mejor costo propio de la industria (referencia de la curva cuando {empresa_analisis} no fabricó internamente); '
+                   'marcador rombo = costo de subcontratación. Abajo: las 4 opciones de producción lado a lado para cada tecnología y el veredicto directo en la tabla.')
+
+        ic_hist_all = df[(df['Estado'] == 'Informe de costos') &
+                          (df['Seccion'].isin(['Costo de producción interna por unidad, USD', 'Costos de fabricación contratada por unidad, USD'])) &
+                          (df['Subgrupo'].isin(['EE.UU.', 'Asia']))].copy()
+        ic_hist_all['Valor'] = num(ic_hist_all['Valor'])
+        ic_hist_all = ic_hist_all.dropna(subset=['Valor'])
+        ic_hist_all = ic_hist_all[ic_hist_all['Valor'] > 0].sort_values('Ronda_Orden')
 
         prod_int_hist = df[(df['Estado'] == 'Detalles de fabricación') &
                             (df['Seccion'] == 'Producción interna, miles unidades') &
@@ -2326,43 +2328,67 @@ def seccion_operaciones():
         col_ca_usa, col_ca_asia = st.columns(2)
         for col_reg, area_ca in [(col_ca_usa, 'EE.UU.'), (col_ca_asia, 'Asia')]:
             with col_reg:
-                sub_ca = costo_hist[costo_hist['Subgrupo'] == area_ca]
-                techs_activas_reg = [t for t in _TECNOLOGIAS_GAP if not sub_ca[sub_ca['Metrica'] == t].empty and (sub_ca[sub_ca['Metrica'] == t]['Valor'] > 0).any()]
-                if not techs_activas_reg:
-                    st.info(f'{empresa_analisis} no registra producción propia en **{area_ca}** todavía.')
+                sub_reg_all = ic_hist_all[ic_hist_all['Subgrupo'] == area_ca]
+                if sub_reg_all.empty:
+                    st.info(f'Sin datos de costos de producción en **{area_ca}**.')
                 else:
                     fig_ca_r = go.Figure()
-                    resumen_red_reg = []
-                    for tech in techs_activas_reg:
-                        g_c = sub_ca[sub_ca['Metrica'] == tech].sort_values('Ronda_Orden')
-                        g_p = prod_int_hist[(prod_int_hist['Subgrupo'] == area_ca) & (prod_int_hist['Metrica'] == tech)][['Ronda', 'Vol', 'VolAcum']]
-                        g_m = g_c.merge(g_p, on='Ronda', how='left')
-                        txt_yoy = _hover_yoy_textos(g_m['Ronda'], g_m['Valor'], fmt_fn=lambda v: f'${v:,.1f} USD/u.')
-                        txt_full = [
-                            f"<b>{r_row['Ronda']}</b> — {tech} ({area_ca})<br>Costo propio: {t_y}<br>Prod. año: {r_row['Vol']:,.0f}k u. · Acum. {area_ca}: {r_row['VolAcum']:,.0f}k u."
-                            if pd.notna(r_row.get('Vol')) else f"<b>{r_row['Ronda']}</b> — {tech} ({area_ca})<br>Costo propio: {t_y}"
-                            for (_, r_row), t_y in zip(g_m.iterrows(), txt_yoy)
-                        ]
-                        fig_ca_r.add_trace(go.Scatter(
-                            x=g_m['Ronda'], y=g_m['Valor'], name=tech, mode='lines+markers',
-                            line=dict(color=COLOR_TECH_CURVA.get(tech, COLOR_CADIZ), width=3),
-                            marker=dict(size=6), text=txt_full, hovertemplate='%{text}<extra></extra>'))
-                        vals_l = g_m['Valor'].tolist()
-                        rondas_l = g_m['Ronda'].tolist()
-                        if len(vals_l) >= 2 and vals_l[0]:
-                            red_a = (vals_l[-1] - vals_l[0]) / vals_l[0] * 100
-                            resumen_red_reg.append(f'{tech}: {red_a:+.1f}% desde {rondas_l[0]}')
+                    for tech in _TECNOLOGIAS_GAP:
+                        color_t = COLOR_TECH_CURVA.get(tech, COLOR_CADIZ)
+                        # 1) Costo propio del equipo en foco (línea sólida gruesa)
+                        g_emp = sub_reg_all[(sub_reg_all['Seccion'] == 'Costo de producción interna por unidad, USD') &
+                                             (sub_reg_all['Empresa'] == empresa_analisis) &
+                                             (sub_reg_all['Metrica'] == tech)].sort_values('Ronda_Orden')
+                        if not g_emp.empty:
+                            g_p = prod_int_hist[(prod_int_hist['Subgrupo'] == area_ca) & (prod_int_hist['Metrica'] == tech)][['Ronda', 'Vol', 'VolAcum']]
+                            g_m = g_emp.merge(g_p, on='Ronda', how='left')
+                            txt_yoy = _hover_yoy_textos(g_m['Ronda'], g_m['Valor'], fmt_fn=lambda v: f'${v:,.1f} USD/u.')
+                            txt_full = [
+                                f"<b>{r_row['Ronda']}</b> — {tech} Propia ({empresa_analisis}, {area_ca})<br>Costo: {t_y}<br>Prod. año: {r_row['Vol']:,.0f}k u. · Acum. {area_ca}: {r_row['VolAcum']:,.0f}k u."
+                                if pd.notna(r_row.get('Vol')) else f"<b>{r_row['Ronda']}</b> — {tech} Propia ({empresa_analisis}, {area_ca})<br>Costo: {t_y}"
+                                for (_, r_row), t_y in zip(g_m.iterrows(), txt_yoy)
+                            ]
+                            fig_ca_r.add_trace(go.Scatter(
+                                x=g_m['Ronda'], y=g_m['Valor'], name=f'{tech} — Propia ({empresa_analisis})',
+                                mode='lines+markers', line=dict(color=color_t, width=3),
+                                marker=dict(size=7), text=txt_full, hovertemplate='%{text}<extra></extra>'))
+
+                        # 2) Mejor costo propio de la industria (línea punteada fina de referencia para las 4 tecnologías)
+                        g_ind = (sub_reg_all[(sub_reg_all['Seccion'] == 'Costo de producción interna por unidad, USD') &
+                                              (sub_reg_all['Metrica'] == tech)]
+                                 .groupby(['Ronda', 'Ronda_Orden'], as_index=False)['Valor'].min()
+                                 .sort_values('Ronda_Orden'))
+                        if not g_ind.empty:
+                            txt_ind = _hover_yoy_textos(g_ind['Ronda'], g_ind['Valor'], fmt_fn=lambda v: f'${v:,.1f} USD/u.')
+                            fig_ca_r.add_trace(go.Scatter(
+                                x=g_ind['Ronda'], y=g_ind['Valor'], name=f'{tech} — Mejor Propia Industria',
+                                mode='lines+markers', line=dict(color=color_t, width=1.8, dash='dot'),
+                                marker=dict(size=5, symbol='circle-open'), opacity=0.75,
+                                text=txt_ind, hovertemplate=f'<b>%{{x}}</b> — {tech} Mejor Propia Industria ({area_ca})<br>Costo: %{{text}}<extra></extra>'))
+
+                        # 3) Costo tercerizado (del equipo en foco o promedio industria si no tercerizó ese año)
+                        g_ter_emp = sub_reg_all[(sub_reg_all['Seccion'] == 'Costos de fabricación contratada por unidad, USD') &
+                                                 (sub_reg_all['Empresa'] == empresa_analisis) &
+                                                 (sub_reg_all['Metrica'] == tech)].sort_values('Ronda_Orden')
+                        if not g_ter_emp.empty:
+                            txt_ter = _hover_yoy_textos(g_ter_emp['Ronda'], g_ter_emp['Valor'], fmt_fn=lambda v: f'${v:,.1f} USD/u.')
+                            fig_ca_r.add_trace(go.Scatter(
+                                x=g_ter_emp['Ronda'], y=g_ter_emp['Valor'], name=f'{tech} — Tercerizada ({empresa_analisis})',
+                                mode='lines+markers', line=dict(color=color_t, width=2, dash='dash'),
+                                marker=dict(size=7, symbol='diamond'), opacity=0.9,
+                                text=txt_ter, hovertemplate=f'<b>%{{x}}</b> — {tech} Tercerizada ({empresa_analisis}, {area_ca})<br>Costo: %{{text}}<extra></extra>'))
+
                     fig_ca_r.update_layout(
-                        title=f'Curva de Aprendizaje en {area_ca} ({empresa_analisis})',
+                        title=f'Curva de Aprendizaje por Tecnología — {area_ca}',
                         yaxis_title='USD/u.', xaxis_title=None,
                         xaxis=dict(categoryorder='array', categoryarray=RONDAS_ORDENADAS),
-                        legend=dict(orientation='h', yanchor='top', y=-0.2, xanchor='center', x=0.5))
-                    mostrar(fig_ca_r)
-                    if resumen_red_reg:
-                        st.caption(f'Variación acumulada en {area_ca}: ' + ' · '.join(resumen_red_reg))
+                        legend=dict(orientation='h', yanchor='top', y=-0.22, xanchor='center', x=0.5))
+                    mostrar(fig_ca_r, margen_b=115, altura=410)
 
         # --- Matriz / Mapa de Decisión: Qué tecnología conviene producir y dónde (en ronda_snapshot) ---
         st.markdown(f'###### Mapa de Decisión de Producción por Tecnología y Planta — {ronda_snapshot}')
+        st.caption(f'Para cada tecnología se muestran las **4 opciones reales en {ronda_snapshot}**: Planta EE.UU. (Interna), Planta Asia (Interna), Tercerizada EE.UU. y Tercerizada Asia '
+                   f'(cuando {empresa_analisis} no utilizó una modalidad ese año, la barra toma automáticamente el costo de referencia de la industria y lo avisa en el tooltip).')
         ic_all_ronda = df[(df['Estado'] == 'Informe de costos') & (df['Ronda'] == ronda_snapshot)].copy()
         ic_all_ronda['Valor'] = num(ic_all_ronda['Valor'])
         filas_dec_prod = []
@@ -2373,74 +2399,104 @@ def seccion_operaciones():
                                  (ic_all_ronda['Metrica'] == tech_d) & (ic_all_ronda['Empresa'] == emp_name)]['Valor'].dropna()
                 return float(s.iloc[0]) if not s.empty and s.iloc[0] > 0 else None
 
-            def _min_rival_interno(area_name):
-                s = ic_all_ronda[(ic_all_ronda['Seccion'] == 'Costo de producción interna por unidad, USD') &
+            def _ref_industria(sec_name, area_name, modo='min'):
+                s = ic_all_ronda[(ic_all_ronda['Seccion'] == sec_name) &
                                  (ic_all_ronda['Subgrupo'] == area_name) & (ic_all_ronda['Metrica'] == tech_d)]['Valor'].dropna()
                 s = s[s > 0]
-                return float(s.min()) if not s.empty else None
+                if s.empty:
+                    return None
+                return float(s.min() if modo == 'min' else s.mean())
 
-            c_int_usa = _val_costo_emp('Costo de producción interna por unidad, USD', 'EE.UU.')
-            c_int_asia = _val_costo_emp('Costo de producción interna por unidad, USD', 'Asia')
-            c_ter_usa = _val_costo_emp('Costos de fabricación contratada por unidad, USD', 'EE.UU.')
-            c_ter_asia = _val_costo_emp('Costos de fabricación contratada por unidad, USD', 'Asia')
-            b_usa = _min_rival_interno('EE.UU.')
-            b_asia = _min_rival_interno('Asia')
+            c_int_usa_emp = _val_costo_emp('Costo de producción interna por unidad, USD', 'EE.UU.')
+            c_int_asia_emp = _val_costo_emp('Costo de producción interna por unidad, USD', 'Asia')
+            c_ter_usa_emp = _val_costo_emp('Costos de fabricación contratada por unidad, USD', 'EE.UU.')
+            c_ter_asia_emp = _val_costo_emp('Costos de fabricación contratada por unidad, USD', 'Asia')
 
-            for etiqueta_mod, valor_m in [
-                (f'Propia EE.UU. ({empresa_analisis})', c_int_usa),
-                (f'Propia Asia ({empresa_analisis})', c_int_asia),
-                (f'Contratada EE.UU. ({empresa_analisis})', c_ter_usa),
-                (f'Contratada Asia ({empresa_analisis})', c_ter_asia),
-                ('Mejor Costo Propio Industria (EE.UU.)', b_usa),
-                ('Mejor Costo Propio Industria (Asia)', b_asia),
+            b_int_usa = _ref_industria('Costo de producción interna por unidad, USD', 'EE.UU.', 'min')
+            b_int_asia = _ref_industria('Costo de producción interna por unidad, USD', 'Asia', 'min')
+            b_ter_usa = _ref_industria('Costos de fabricación contratada por unidad, USD', 'EE.UU.', 'min')
+            b_ter_asia = _ref_industria('Costos de fabricación contratada por unidad, USD', 'Asia', 'min')
+
+            v_int_usa = c_int_usa_emp if c_int_usa_emp is not None else b_int_usa
+            v_int_asia = c_int_asia_emp if c_int_asia_emp is not None else b_int_asia
+            v_ter_usa = c_ter_usa_emp if c_ter_usa_emp is not None else b_ter_usa
+            v_ter_asia = c_ter_asia_emp if c_ter_asia_emp is not None else b_ter_asia
+
+            for nombre_op, val_op, val_emp_real, val_bm in [
+                ('Planta EE.UU. (Interna)', v_int_usa, c_int_usa_emp, b_int_usa),
+                ('Planta Asia (Interna)', v_int_asia, c_int_asia_emp, b_int_asia),
+                ('Tercerizada EE.UU.', v_ter_usa, c_ter_usa_emp, b_ter_usa),
+                ('Tercerizada Asia', v_ter_asia, c_ter_asia_emp, b_ter_asia),
             ]:
-                if valor_m is not None:
-                    filas_dec_prod.append({'Tecnología': tech_d, 'Opción': etiqueta_mod, 'USD/u.': valor_m})
+                if val_op is not None:
+                    origen_txt = f'Dato real de {empresa_analisis}' if val_emp_real is not None else f'Referencia industria ({empresa_analisis} no produjo acá este año)'
+                    bm_extra = f' · Mejor industria: ${val_bm:,.1f}/u.' if (val_emp_real is not None and val_bm is not None) else ''
+                    filas_dec_prod.append({
+                        'Tecnología': tech_d,
+                        'Opción': nombre_op,
+                        'USD/u.': val_op,
+                        'Etiqueta': f'${val_op:,.1f}' + ('' if val_emp_real is not None else '*'),
+                        'Hover': f'<b>{tech_d} — {nombre_op}</b><br>Costo: ${val_op:,.1f} USD/u.<br>{origen_txt}{bm_extra}'
+                    })
 
-            if any(x is not None for x in (c_int_usa, c_int_asia, c_ter_usa, c_ter_asia, b_usa, b_asia)):
-                opciones_propias = {k: v for k, v in [('Planta Asia (Propia)', c_int_asia), ('Planta EE.UU. (Propia)', c_int_usa),
-                                                       ('Contratada EE.UU.', c_ter_usa), ('Contratada Asia', c_ter_asia)] if v is not None}
-                if opciones_propias:
-                    mejor_op = min(opciones_propias, key=opciones_propias.get)
-                    mejor_val = opciones_propias[mejor_op]
-                    if c_int_usa is None and c_int_asia is None:
-                        ref_ind = b_asia or b_usa
-                        rec_txt = f'⚠️ Solo subcontratada (${mejor_val:,.1f}/u.) — pasar a planta propia (benchmark industria: ${ref_ind:,.1f}/u.)' if ref_ind else f'⚠️ Solo subcontratada (${mejor_val:,.1f}/u.)'
-                    else:
-                        rec_txt = f'✅ {mejor_op} (${mejor_val:,.1f}/u.)'
+            opciones_disp = {k: v for k, v in [
+                ('Planta Asia (Interna)', v_int_asia),
+                ('Planta EE.UU. (Interna)', v_int_usa),
+                ('Tercerizada EE.UU.', v_ter_usa),
+                ('Tercerizada Asia', v_ter_asia),
+            ] if v is not None}
+
+            if opciones_disp:
+                mejor_op_nombre = min(opciones_disp, key=opciones_disp.get)
+                mejor_op_val = opciones_disp[mejor_op_nombre]
+                min_propia = min([x for x in (v_int_usa, v_int_asia) if x is not None], default=None)
+                min_terc = min([x for x in (v_ter_usa, v_ter_asia) if x is not None], default=None)
+
+                if mejor_op_nombre.startswith('Tercerizada') and min_propia is not None and mejor_op_val < min_propia:
+                    rec_txt = f'✅ Conviene {mejor_op_nombre} (${mejor_op_val:,.1f}/u. vs. ${min_propia:,.1f}/u. en planta propia — volumen inicial aún bajo en curva)'
+                elif mejor_op_nombre.startswith('Planta') and min_terc is not None:
+                    ahorro = min_terc - mejor_op_val
+                    rec_txt = f'✅ Conviene {mejor_op_nombre} (${mejor_op_val:,.1f}/u. — ahorra ${ahorro:,.1f}/u. vs. tercerizar)'
                 else:
-                    partes_bm = ([f'EE.UU. ${b_usa:,.1f}'] if b_usa is not None else []) + ([f'Asia ${b_asia:,.1f}'] if b_asia is not None else [])
-                    rec_txt = f'Sin producción en {empresa_analisis}' + (f' (benchmark industria: {" / ".join(partes_bm)})' if partes_bm else '')
+                    rec_txt = f'✅ Conviene {mejor_op_nombre} (${mejor_op_val:,.1f}/u.)'
+
+                def _fmt_celda(v_e, v_b):
+                    if v_e is not None and v_b is not None and abs(v_e - v_b) > 0.05:
+                        return f'${v_e:,.1f} (mejor ind.: ${v_b:,.1f})'
+                    if v_e is not None:
+                        return f'${v_e:,.1f}'
+                    if v_b is not None:
+                        return f'— (ref. ind.: ${v_b:,.1f}*)'
+                    return '—'
+
                 filas_tabla_dec.append({
                     'Tecnología': tech_d,
-                    f'Propia EE.UU. ({empresa_analisis})': f'${c_int_usa:,.1f}' if c_int_usa else '—',
-                    f'Propia Asia ({empresa_analisis})': f'${c_int_asia:,.1f}' if c_int_asia else '—',
-                    'Contratada (EE.UU. / Asia)': ' / '.join([f'${v:,.1f}' for v in (c_ter_usa, c_ter_asia) if v]) or '—',
-                    'Mejor Costo Industria (EE.UU. / Asia)': f'${b_usa:,.1f if b_usa is not None else 0}' if False else f"{'$' + format(b_usa, ',.1f') if b_usa is not None else '—'} / {'$' + format(b_asia, ',.1f') if b_asia is not None else '—'}",
-                    'Dónde conviene producir': rec_txt,
+                    'Planta EE.UU. (Interna)': _fmt_celda(c_int_usa_emp, b_int_usa),
+                    'Planta Asia (Interna)': _fmt_celda(c_int_asia_emp, b_int_asia),
+                    'Tercerizada EE.UU.': _fmt_celda(c_ter_usa_emp, b_ter_usa),
+                    'Tercerizada Asia': _fmt_celda(c_ter_asia_emp, b_ter_asia),
+                    'Decisión Óptima (Menor Costo Unitario)': rec_txt,
                 })
 
         if filas_dec_prod:
             df_dec_p = pd.DataFrame(filas_dec_prod)
             mapa_col_dec = {
-                f'Propia EE.UU. ({empresa_analisis})': COLOR_METRICA['dinero'],
-                f'Propia Asia ({empresa_analisis})': COLOR_CADIZ,
-                f'Contratada EE.UU. ({empresa_analisis})': COLOR_METRICA['riesgo'],
-                f'Contratada Asia ({empresa_analisis})': '#E87BA4',
-                'Mejor Costo Propio Industria (EE.UU.)': MUTED_PALETTE[0],
-                'Mejor Costo Propio Industria (Asia)': MUTED_PALETTE[2],
+                'Planta EE.UU. (Interna)': COLOR_METRICA['dinero'],
+                'Planta Asia (Interna)': COLOR_CADIZ,
+                'Tercerizada EE.UU.': COLOR_METRICA['riesgo'],
+                'Tercerizada Asia': '#E87BA4',
             }
             fig_dec_p = px.bar(
                 df_dec_p, x='Tecnología', y='USD/u.', color='Opción', barmode='group',
+                category_orders={'Tecnología': _TECNOLOGIAS_GAP, 'Opción': ['Planta EE.UU. (Interna)', 'Planta Asia (Interna)', 'Tercerizada EE.UU.', 'Tercerizada Asia']},
                 color_discrete_map=mapa_col_dec,
-                text=df_dec_p['USD/u.'].apply(lambda v: f'${v:,.1f}'),
-                title=f'Costo Unitario de Producción por Tecnología y Región ({empresa_analisis} vs. Mejor de la Industria) — {ronda_snapshot}')
-            fig_dec_p.update_traces(textposition='outside', cliponaxis=False)
+                text='Etiqueta', custom_data=['Hover'],
+                title=f'Comparativa de las 4 Opciones de Producción por Tecnología — {ronda_snapshot} (* = referencia industria)')
+            fig_dec_p.update_traces(textposition='outside', cliponaxis=False, hovertemplate='%{customdata[0]}<extra></extra>')
             fig_dec_p.update_layout(yaxis_title='USD / unidad', legend=dict(orientation='h', yanchor='top', y=-0.22, xanchor='center', x=0.5))
             mostrar(fig_dec_p)
             if filas_tabla_dec:
                 st.dataframe(pd.DataFrame(filas_tabla_dec), use_container_width=True, hide_index=True)
-
         st.divider()
         st.markdown('**Producción: propia vs. contratada, y fábricas**')
         prod = df[(df['Estado'] == 'Detalles de fabricación') &
