@@ -108,16 +108,24 @@ def parse_cesim_xls(path_or_buffer) -> pd.DataFrame:
     cur_statement = cur_section = cur_subgroup = None
     active_companies = list(COMPANIES)
 
-    def is_company_header(label, vals):
-        return label == '' and all(isinstance(v, str) and v.strip() != '' for v in vals)
+    COMPANIES = ['LUCKY', 'MECHA', 'PRELA', 'NEXUS', 'ULTI', 'NOSRE', 'NODO']
 
-    for item in raw:
-        label, size, weight, vals = item['label'], item['size'], item['weight'], item['vals']
-        if is_company_header(label, vals):
-            active_companies = [v.strip() for v in vals]
-            continue
-        all_empty = all(v == '' for v in vals)
+# Alias directos por si solo se renombra nuestra empresa en el .xls
+COMPANY_ALIASES = {
+    'CADIZ': 'ULTI',
+    'CÁDIZ': 'ULTI',
+}
 
+def normalizar_equipos(vals):
+    """Mantiene siempre los 7 nombres canónicos de la industria de ULTI
+    (['LUCKY', 'MECHA', 'PRELA', 'NEXUS', 'ULTI', 'NOSRE', 'NODO']) en todos los años,
+    incluso si en rondas posteriores se renombran los equipos en Cesim (ej. ULTI -> CADIZ)."""
+    limpios = [COMPANY_ALIASES.get(str(v).strip().upper(), str(v).strip().upper()) for v in vals]
+    # Si todos los nombres (tras aplicar alias) pertenecen a COMPANIES, respetamos su nombre;
+    # si cambiaron los nombres de la industria en el .xls, mapeamos 1:1 por posición de columna fija de Cesim.
+    if set(limpios) == set(COMPANIES):
+        return limpios
+    return list(COMPANIES)
         if all_empty:
             if size == 14:
                 cur_statement, cur_section, cur_subgroup = label, None, None
