@@ -200,13 +200,18 @@ def get_proyeccion(ronda_num=None):
     poder arrancar igual)."""
     path = None
     if ronda_num is not None:
-        candidato = os.path.join(DIR_DECISIONES, f"Ulti_proyeccion_R{ronda_num}.xlsx")
-        if os.path.exists(candidato):
-            path = candidato
+        for pref in ("Ulti_proyeccion_R", "Cadiz_proyeccion_R"):
+            candidato = os.path.join(DIR_DECISIONES, f"{pref}{ronda_num}.xlsx")
+            if os.path.exists(candidato):
+                path = candidato
+                break
     if path is None:
         path = descubrir_ultima_proyeccion(DIR_DECISIONES)
-    if path is None and os.path.exists(DEFAULT_PROYECCION_EXCEL):
-        path = DEFAULT_PROYECCION_EXCEL
+    if path is None:
+        for fallback_name in (DEFAULT_PROYECCION_EXCEL, os.path.join(BASE_DIR, "CADIZ_Gestion_v2.xlsx")):
+            if os.path.exists(fallback_name):
+                path = fallback_name
+                break
     if path is None:
         return None
     return _cargar_proyeccion_cached(path, os.path.getmtime(path))

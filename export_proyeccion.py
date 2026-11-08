@@ -62,7 +62,15 @@ def read_dataframe(excel_path=DEFAULT_EXCEL, team="ULTI") -> pd.DataFrame:
             "quedado desalineado con nombres de columna nuevos."
         )
 
-    rows = [row for row in ws.iter_rows(min_row=2, values_only=True) if row[3] == team]
+    equipos_validos = {team, "ULTI", "CADIZ", "CÁDIZ"}
+    rows = []
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if str(row[3]).strip().upper() in equipos_validos:
+            r_list = list(row)
+            r_list[3] = team
+            if isinstance(r_list[6], str):
+                r_list[6] = r_list[6].replace("CADIZ", "ULTI").replace("CÁDIZ", "ULTI")
+            rows.append(r_list)
     return pd.DataFrame(rows, columns=COLUMNS)
 
 

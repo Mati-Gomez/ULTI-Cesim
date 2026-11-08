@@ -10,6 +10,27 @@ import xlrd
 COMPANIES = ['LUCKY', 'MECHA', 'PRELA', 'NEXUS', 'ULTI', 'NOSRE', 'NODO']
 N_PRACTICE_ROUNDS = 3  # Cesim: 3 rondas de practica + 12 oficiales
 
+# Alias directos para mantener siempre los mismos nombres canónicos de la industria de ULTI
+# en todos los años, incluso si en alguna ronda se renombra el equipo en Cesim (ej. ULTI -> CADIZ).
+COMPANY_ALIASES = {
+    'CADIZ': 'ULTI',
+    'CÁDIZ': 'ULTI',
+}
+
+
+def normalizar_equipos(vals):
+    """Normaliza una fila de encabezado de equipos del .xls a los 7 nombres canónicos de COMPANIES:
+    1) Si los nombres (tras aplicar COMPANY_ALIASES) coinciden con el conjunto COMPANIES, devuelve
+       esos nombres normalizados respetando su orden.
+    2) Si cambiaron los nombres de la industria en el .xls (ej. traspaso de cuentas a nombres de
+       otra comisión), mapea 1:1 por la posición fija de columna de Cesim (cols 1..7 -> COMPANIES).
+    """
+    limpios = [COMPANY_ALIASES.get(str(v).strip().upper(), str(v).strip().upper()) for v in vals]
+    if set(limpios) == set(COMPANIES):
+        return limpios
+    return list(COMPANIES)
+
+
 MODULE_MAP = {
     'Cuenta de resultados, miles USD, Global': 'Estados financieros',
     'Hoja de Balance, miles USD, Global': 'Estados financieros',
@@ -52,22 +73,9 @@ def detect_round(title: str):
     if m:
         n = int(m.group(1))
         return f'Práctica {n}', 'Práctica', n, n - N_PRACTICE_ROUNDS
-    # Bug real verificado (no un supuesto): el RDOS oficial de la Ronda 0 de ULTI titula la hoja
-    # "Resultados, Ronda inicial 0" (confirmado contra el .xls real), no "Ronda 0". La regex genérica
-    # de abajo NO matchea por la palabra "inicial" interpuesta -> sin este caso especial, Ronda 0
-    # quedaba con Tipo_Ronda='Desconocido' y Ronda_Orden=None, y como app.py filtra Tipo_Ronda=='Oficial'
-    # y ordena por Ronda_Orden, Ronda 0 desaparecía SILENCIOSAMENTE de todo el tablero (incluidas
-    # evoluciones ya entregadas, ej. Capitalización de Mercado). Se resuelve ANTES de la regex genérica.
     m = re.search(r'Ronda\s+inicial\s*(\d+)', title, re.IGNORECASE)
     if m:
         n = int(m.group(1))
-        # Rebranding a pedido del equipo (ver Informe de ajustes del Tablero): la etiqueta que
-        # se MUESTRA cambia de "Ronda N" a "Año N" en TODO el tablero. El valor que cambia es
-        # el STRING DE SALIDA de detect_round() -- este es el único lugar donde se genera --, no
-        # el nombre de la columna 'Ronda' del DataFrame (sigue llamándose 'Ronda' internamente,
-        # es solo un identificador de columna, nunca se le muestra al usuario) ni las regex de
-        # ENTRADA de arriba (matchean el título real que exporta CESIM, que sigue diciendo
-        # "Ronda..." -- eso es dato de origen de CESIM, no texto de nuestra UI).
         return f'Año {n}', 'Oficial', n, n
     m = re.search(r'Ronda\s*(\d+)', title, re.IGNORECASE)
     if m:
@@ -81,7 +89,6 @@ def parse_cesim_xls(path_or_buffer) -> pd.DataFrame:
     book = xlrd.open_workbook(file_contents=path_or_buffer.read()) if hasattr(path_or_buffer, 'read') \
         else xlrd.open_workbook(path_or_buffer, formatting_info=True)
     if hasattr(path_or_buffer, 'read'):
-        # necesitamos formatting_info tambien en modo buffer
         path_or_buffer.seek(0)
         book = xlrd.open_workbook(file_contents=path_or_buffer.read(), formatting_info=True)
 
@@ -108,24 +115,16 @@ def parse_cesim_xls(path_or_buffer) -> pd.DataFrame:
     cur_statement = cur_section = cur_subgroup = None
     active_companies = list(COMPANIES)
 
-    COMPANIES = ['LUCKY', 'MECHA', 'PRELA', 'NEXUS', 'ULTI', 'NOSRE', 'NODO']
+    def is_company_header(label, vals):
+        return label == '' and all(isinstance(v, str) and v.strip() != '' for v in vals)
 
-# Alias directos por si solo se renombra nuestra empresa en el .xls
-COMPANY_ALIASES = {
-    'CADIZ': 'ULTI',
-    'CÁDIZ': 'ULTI',
-}
+    for item in raw:
+        label, size, weight, vals = item['label'], item['size'], item['weight'], item['vals']
+        if is_company_header(label, vals):
+            active_companies = normalizar_equipos(vals)
+            continue
+        all_empty = all(v == '' for v in vals)
 
-def normalizar_equipos(vals):
-    """Mantiene siempre los 7 nombres canónicos de la industria de ULTI
-    (['LUCKY', 'MECHA', 'PRELA', 'NEXUS', 'ULTI', 'NOSRE', 'NODO']) en todos los años,
-    incluso si en rondas posteriores se renombran los equipos en Cesim (ej. ULTI -> CADIZ)."""
-    limpios = [COMPANY_ALIASES.get(str(v).strip().upper(), str(v).strip().upper()) for v in vals]
-    # Si todos los nombres (tras aplicar alias) pertenecen a COMPANIES, respetamos su nombre;
-    # si cambiaron los nombres de la industria en el .xls, mapeamos 1:1 por posición de columna fija de Cesim.
-    if set(limpios) == set(COMPANIES):
-        return limpios
-    return list(COMPANIES)
         if all_empty:
             if size == 14:
                 cur_statement, cur_section, cur_subgroup = label, None, None
@@ -134,9 +133,6 @@ def normalizar_equipos(vals):
             elif weight >= 700 or font_list[0].weight >= 700:
                 cur_subgroup = label
             else:
-                # Fila de datos vacia (ej. tecnologia sin produccion/ventas en la ronda):
-                # NO es un subgrupo (su fuente es normal, weight 400), pero registramos
-                # las celdas vacias para mantener la estructura completa y no ensuciar cur_subgroup.
                 for company, v in zip(active_companies, vals):
                     records.append({
                         'Ronda': ronda,
@@ -171,47 +167,13 @@ def normalizar_equipos(vals):
     return pd.DataFrame(records)
 
 
-# ----------------------------------------------------------------------------------------------
-# Corrección de escala monetaria (x1000 de "miles USD/RMB/EUR") -- CENTRALIZADA acá.
-#
-# Regla CESIM verificada (no un supuesto): el RDOS rotula "miles USD" (o "miles RMB"/"miles EUR")
-# en el nombre del Estado, de la Sección o de la Métrica -- según la hoja -- y el valor de la celda
-# es el crudo EN MILES, no el absoluto. Evidencia ya verificada de forma independiente (bottom-up,
-# 0,003% de diferencia): precio de venta x volumen vendido x tipo de cambio, sumado en las 3 áreas y
-# las 2 tecnologías activas de ULTI (Ronda 2) = USD 73.716.619.198 contra "Ingresos por ventas"
-# Global publicado (73.714.297,44 "miles USD") x1000 = USD 73.714.297.440,62. Ver el detalle completo
-# (con el historial de idas y vueltas -- Adendas 23 a 27) en gap_analysis.py, docstring de
-# `_to_absoluto()`.
-#
-# Antes de esta corrección, el dataset que devuelve build_historico() traía el valor CRUDO tal cual
-# la celda, y cada consumidor tenía que acordarse de aplicar el x1000 por su cuenta -- lo que llevó a
-# que la corrección quedara DUPLICADA y DISPERSA (gap_analysis.py: `_to_absoluto()` para tipo="usd" y
-# tipo="unidades" de la Comparativa Plan vs. Real, y `flujo_caja_plan_real_global()` a mano para el
-# Flujo de Caja; app.py: parches puntuales en Capitalización de Mercado, Beneficio Neto Acumulado y
-# Dinámica de Mercado agregados en las últimas dos tandas) y a la vez INCOMPLETA (el resto del
-# tablero nativo -- Estado de Resultados, Balance, waterfall de EBITDA, Operaciones, RRHH -- seguía
-# mostrando el valor crudo sin corregir, la "escala híbrida" reportada por el equipo). Se centraliza
-# acá, en el ÚNICO lugar que arma el dataset real, para que CUALQUIER consumidor (app.py y
-# gap_analysis.py por igual) reciba directamente el valor en USD/unidades absolutas -- los parches
-# puntuales que compensaban el crudo se retiran en el mismo cambio (ver Informe de esta refactorización
-# para el detalle de qué se retiró y dónde).
-#
-# Excepción verificada (Categoría: dato real, confirmado por orden de magnitud, no un supuesto):
-# 'Costos totales mensuales por empleado, USD' (Informe de RRHH) vive DENTRO de la Sección "Desglose
-# de los costos, miles USD" -- junto a líneas que sí son agregados (Costos totales, Salarios y costos
-# laborales, etc.) -- pero es un costo POR EMPLEADO, ya absoluto (~USD 10.783/mes/empleado en los RDOS
-# reales de ULTI; x1000 sería ~USD 10,78 millones/mes/empleado, no plausible). Auditado exhaustivamente
-# contra los RDOS reales de ULTI R0-R3 (los 7 equipos): es el ÚNICO caso de una métrica por-unidad/
-# por-empleado anidada dentro de un Estado/Sección/Métrica rotulado "miles" -- no hay otros.
 _PATRON_ESCALA_MILES = re.compile(r'miles (?:USD|RMB|EUR)', re.IGNORECASE)
 _EXCEPCIONES_ESCALA_MONETARIA = {'Costos totales mensuales por empleado, USD'}
 
 
 def _corregir_escala_monetaria(df: pd.DataFrame) -> pd.DataFrame:
-    """Aplica el x1000 verificado (ver nota arriba) a toda fila cuyo Estado, Sección o Métrica
-    contenga literalmente "miles USD/RMB/EUR", excepto la única excepción confirmada. No toca
-    unidades ("miles unidades", ya se maneja aparte donde corresponde) ni valores no numéricos
-    (se dejan tal cual, ej. el placeholder '-' de una Valuación no calculada)."""
+    """Aplica el x1000 verificado a toda fila cuyo Estado, Sección o Métrica
+    contenga literalmente "miles USD/RMB/EUR", excepto la única excepción confirmada."""
     if df.empty:
         return df
     texto = (df['Estado'].astype(str) + ' ' + df['Seccion'].astype(str) + ' ' + df['Metrica'].astype(str))
@@ -221,26 +183,18 @@ def _corregir_escala_monetaria(df: pd.DataFrame) -> pd.DataFrame:
     idx_numericos = valores.dropna().index
     df.loc[idx_numericos, 'Valor'] = valores.loc[idx_numericos] * 1000.0
     return df
-# ----------------------------------------------------------------------------------------------
 
 
 def build_historico(file_paths) -> pd.DataFrame:
     """Parsea una lista de rutas .xls y devuelve el dataset historico consolidado,
-    ordenado cronologicamente. Si dos archivos corresponden a la misma Ronda
-    (ej. se resubio corregido), se queda con el ULTIMO archivo de esa ronda
-    completo (no mezcla filas fila-por-fila entre ambos, evita perder datos
-    legitimos con nombres de metrica repetidos dentro de una misma seccion).
-
-    Aplica también la corrección de escala monetaria (x1000 de "miles USD/RMB/EUR", ver nota arriba
-    de _corregir_escala_monetaria) antes de devolver el dataset -- así TODO consumidor (app.py,
-    gap_analysis.py) recibe el valor absoluto ya corregido, sin tener que acordarse de escalarlo."""
-    por_ronda = {}  # Ronda -> DataFrame (el ultimo archivo visto para esa ronda gana)
+    ordenado cronologicamente, con nombres de equipos normalizados al universo ULTI."""
+    por_ronda = {}
     for p in file_paths:
         frame = parse_cesim_xls(p)
         if frame.empty:
             continue
         ronda = frame['Ronda'].iloc[0]
-        por_ronda[ronda] = frame  # sobreescribe si la ronda ya existia
+        por_ronda[ronda] = frame
 
     if not por_ronda:
         return pd.DataFrame()
